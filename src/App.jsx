@@ -5,6 +5,7 @@ import LeftSidebar from './components/LeftSidebar';
 import DocumentEditor from './components/DocumentEditor';
 import AIChatPanel from './components/AIChatPanel';
 import WelcomeScreen from './components/WelcomeScreen';
+import LoginScreen from './components/LoginScreen';
 import SettingsPanel from './components/SettingsPanel';
 import {
   ResizablePanelGroup,
@@ -13,7 +14,13 @@ import {
 } from '@/components/ui/resizable';
 
 function App() {
-  const [activeView, setActiveView] = useState('editor'); // welcome, editor, settings
+  const [activeView, setActiveView] = useState('login'); // login, welcome, editor, settings
+  
+  // Force login screen at component mount (especially for Electron)
+  useEffect(() => {
+    console.log('App mounted, forcing login screen');
+    setActiveView('login');
+  }, []);
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [apiKey, setApiKey] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -39,13 +46,22 @@ function App() {
         // Hide loading screen
         document.body.classList.add('app-loaded');
         
-        // Load saved API key
+        // Load saved API key first
         if (window.electronAPI) {
           const savedApiKey = await window.electronAPI.security.getApiKey();
+          console.log('Electron API key check:', savedApiKey ? 'Found' : 'Not found');
           if (savedApiKey) {
             setApiKey(savedApiKey);
           }
+          
+          // Clear any cached view state in Electron
+          await window.electronAPI.store.set('activeView', 'login');
+          console.log('Cleared Electron activeView cache');
         }
+        
+        // Always start with login screen (force after clearing cache)
+        console.log('Initialization complete, setting activeView to login');
+        setActiveView('login');
         
         setIsLoading(false);
       } catch (error) {
@@ -175,8 +191,38 @@ function App() {
     }
   };
 
+  // Login screen handlers
+  const handleOpenProject = async () => {
+    console.log('Opening project...');
+    // Implement project opening logic
+    setActiveView('editor');
+  };
+
+
+
+  const handleOpenSettingsFromLogin = () => {
+    setActiveView('settings');
+  };
+
+  const handleContinueToApp = () => {
+    setActiveView('editor');
+  };
+
   if (isLoading) {
     return null; // Loading screen is handled by HTML
+  }
+
+  console.log('App rendering with activeView:', activeView);
+
+  // Show login screen on first visit
+  if (activeView === 'login') {
+    return (
+      <LoginScreen
+        onOpenProject={handleOpenProject}
+        onOpenSettings={handleOpenSettingsFromLogin}
+        onContinue={handleContinueToApp}
+      />
+    );
   }
 
   // Show welcome screen only on first visit
@@ -198,7 +244,7 @@ function App() {
         <SettingsPanel 
           apiKey={apiKey}
           onApiKeySave={handleApiKeySave}
-          onBack={() => setActiveView('editor')}
+          onBack={() => setActiveView('login')}
         />
       </div>
     );

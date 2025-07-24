@@ -62,9 +62,23 @@ LawInAI, Türk avukatlar için geliştirilmiş yapay zeka destekli hukuki asista
 
 ## 🛠️ Geliştirme
 
+### VS Code Kurulumu
+
+En iyi geliştirme deneyimi için önerilen extension'ları kurun:
+- **Tailwind CSS IntelliSense** - Tailwind class'ları için auto-completion
+- **PostCSS Language Support** - CSS syntax highlighting
+
+Proje `.vscode/settings.json` dosyası ile otomatik olarak şunları yapılandırır:
+- Tailwind CSS desteği
+- `@tailwind` direktifleri için CSS validation uyarılarını devre dışı bırakır
+- className attribute'larında autocomplete'i aktif eder
+
 ### Mevcut Komutlar
 
 ```bash
+# Bağımlılıkları yükle
+npm install
+
 # Geliştirme modunda çalıştır
 npm run dev
 

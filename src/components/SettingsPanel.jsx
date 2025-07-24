@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Key, Save, Eye, EyeOff, CheckCircle, AlertCircle, Info, Trash2, ArrowLeft } from 'lucide-react';
+import { Key, Save, Eye, EyeOff, CheckCircle, AlertCircle, Info, Trash2, ArrowLeft, Sun, Moon } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
-function SettingsPanel({ apiKey, onApiKeySave, onBack }) {
+function SettingsPanel({ apiKey, onApiKeySave, onBack, darkMode, onToggleTheme }) {
   const [currentApiKey, setCurrentApiKey] = useState(apiKey || '');
   const [showApiKey, setShowApiKey] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -69,37 +70,48 @@ function SettingsPanel({ apiKey, onApiKeySave, onBack }) {
       <div className="max-w-2xl mx-auto space-y-8">
         {/* Header */}
         <div>
-          <div className="flex items-center space-x-3 mb-2">
-            {onBack && (
-              <button
-                onClick={onBack}
-                className="p-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors text-gray-400 hover:text-white"
-              >
-                <ArrowLeft className="w-5 h-5" />
-              </button>
-            )}
-            <h1 className="text-2xl font-bold text-white">Ayarlar</h1>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center space-x-3">
+              {onBack && (
+                <Button
+                  onClick={onBack}
+                  variant="ghost"
+                  size="sm"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </Button>
+              )}
+              <h1 className="text-2xl font-bold text-foreground">Ayarlar</h1>
+            </div>
+            <Button 
+              onClick={onToggleTheme}
+              variant="ghost" 
+              size="sm"
+              title={darkMode ? 'Açık tema' : 'Koyu tema'}
+            >
+              {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </Button>
           </div>
-          <p className="text-gray-400">
+          <p className="text-muted-foreground">
             LawInAI uygulaması ayarlarını yönetin
           </p>
         </div>
 
         {/* API Key Section */}
-        <div className="panel">
-          <div className="panel-header">
+        <div className="bg-card border border-border rounded-lg">
+          <div className="bg-muted/50 px-4 py-3 border-b border-border font-medium">
             <div className="flex items-center space-x-2">
-              <Key className="w-5 h-5 text-blue-400" />
+              <Key className="w-5 h-5 text-primary" />
               <span>OpenAI API Anahtarı</span>
             </div>
           </div>
-          <div className="panel-content space-y-4">
-            <div className="bg-blue-900/20 border border-blue-700 rounded-lg p-4">
+          <div className="p-4 space-y-4">
+            <div className="bg-primary/10 border border-primary/20 rounded-lg p-4">
               <div className="flex items-start space-x-3">
-                <Info className="w-5 h-5 text-blue-400 mt-0.5 flex-shrink-0" />
-                <div className="text-sm text-blue-100">
+                <Info className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
+                <div className="text-sm text-foreground">
                   <p className="font-medium mb-1">API Anahtarı Gerekli</p>
-                  <p>
+                  <p className="text-muted-foreground">
                     LawInAI'ın çalışması için OpenAI API anahtarına ihtiyaç duyar. 
                     Anahtarınız güvenli şekilde yalnızca cihazınızda saklanır.
                   </p>
@@ -108,7 +120,7 @@ function SettingsPanel({ apiKey, onApiKeySave, onBack }) {
                       href="https://platform.openai.com/api-keys" 
                       target="_blank" 
                       rel="noopener noreferrer"
-                      className="text-blue-300 hover:text-blue-200 underline"
+                      className="text-primary hover:text-primary/80 underline"
                     >
                       OpenAI API anahtarı almak için tıklayın →
                     </a>
@@ -118,7 +130,7 @@ function SettingsPanel({ apiKey, onApiKeySave, onBack }) {
             </div>
 
             <div className="space-y-3">
-              <label className="block text-sm font-medium text-gray-300">
+              <label className="block text-sm font-medium text-foreground">
                 API Anahtarı
               </label>
               
@@ -128,30 +140,32 @@ function SettingsPanel({ apiKey, onApiKeySave, onBack }) {
                   value={currentApiKey}
                   onChange={(e) => setCurrentApiKey(e.target.value)}
                   placeholder="sk-..."
-                  className="input-primary w-full pr-20"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 pr-20"
                 />
-                <button
+                <Button
                   onClick={() => setShowApiKey(!showApiKey)}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-1 top-1/2 transform -translate-y-1/2 h-8 w-8 p-0"
                 >
                   {showApiKey ? (
-                    <EyeOff className="w-5 h-5" />
+                    <EyeOff className="w-4 h-4" />
                   ) : (
-                    <Eye className="w-5 h-5" />
+                    <Eye className="w-4 h-4" />
                   )}
-                </button>
+                </Button>
               </div>
 
               {/* Validation feedback */}
               {currentApiKey && !isValidApiKeyFormat(currentApiKey) && (
-                <p className="text-sm text-yellow-400 flex items-center space-x-2">
+                <p className="text-sm text-yellow-500 flex items-center space-x-2">
                   <AlertCircle className="w-4 h-4" />
                   <span>API anahtarı formatı geçersiz olabilir</span>
                 </p>
               )}
 
               {currentApiKey && isValidApiKeyFormat(currentApiKey) && (
-                <p className="text-sm text-green-400 flex items-center space-x-2">
+                <p className="text-sm text-green-500 flex items-center space-x-2">
                   <CheckCircle className="w-4 h-4" />
                   <span>API anahtarı formatı geçerli görünüyor</span>
                 </p>
@@ -159,14 +173,14 @@ function SettingsPanel({ apiKey, onApiKeySave, onBack }) {
 
               {/* Save status */}
               {saveStatus === 'success' && (
-                <p className="text-sm text-green-400 flex items-center space-x-2">
+                <p className="text-sm text-green-500 flex items-center space-x-2">
                   <CheckCircle className="w-4 h-4" />
                   <span>API anahtarı başarıyla kaydedildi</span>
                 </p>
               )}
 
               {saveStatus === 'error' && (
-                <p className="text-sm text-red-400 flex items-center space-x-2">
+                <p className="text-sm text-red-500 flex items-center space-x-2">
                   <AlertCircle className="w-4 h-4" />
                   <span>API anahtarı kaydedilemedi</span>
                 </p>
@@ -174,54 +188,55 @@ function SettingsPanel({ apiKey, onApiKeySave, onBack }) {
             </div>
 
             <div className="flex space-x-3">
-              <button
+              <Button
                 onClick={handleSaveApiKey}
                 disabled={!currentApiKey.trim() || isSaving}
-                className="btn-primary flex items-center space-x-2 disabled:opacity-50"
+                className="flex items-center space-x-2"
               >
                 <Save className="w-4 h-4" />
                 <span>{isSaving ? 'Kaydediliyor...' : 'Kaydet'}</span>
-              </button>
+              </Button>
 
               {currentApiKey && (
-                <button
+                <Button
                   onClick={handleClearApiKey}
-                  className="btn-danger flex items-center space-x-2"
+                  variant="destructive"
+                  className="flex items-center space-x-2"
                 >
                   <Trash2 className="w-4 h-4" />
                   <span>Temizle</span>
-                </button>
+                </Button>
               )}
             </div>
           </div>
         </div>
 
         {/* App Information */}
-        <div className="panel">
-          <div className="panel-header">
+        <div className="bg-card border border-border rounded-lg">
+          <div className="bg-muted/50 px-4 py-3 border-b border-border font-medium">
             <span>Uygulama Bilgileri</span>
           </div>
-          <div className="panel-content">
+          <div className="p-4">
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
-                <span className="text-gray-400">Sürüm:</span>
-                <span className="text-white ml-2">{appVersion}</span>
+                <span className="text-muted-foreground">Sürüm:</span>
+                <span className="text-foreground ml-2">{appVersion}</span>
               </div>
               <div>
-                <span className="text-gray-400">Platform:</span>
-                <span className="text-white ml-2">
+                <span className="text-muted-foreground">Platform:</span>
+                <span className="text-foreground ml-2">
                   {window.platform?.isWindows ? 'Windows' : 
                    window.platform?.isMac ? 'macOS' : 
                    window.platform?.isLinux ? 'Linux' : 'Bilinmeyen'}
                 </span>
               </div>
               <div>
-                <span className="text-gray-400">Electron:</span>
-                <span className="text-white ml-2">✓ Aktif</span>
+                <span className="text-muted-foreground">Electron:</span>
+                <span className="text-foreground ml-2">✓ Aktif</span>
               </div>
               <div>
-                <span className="text-gray-400">AI Model:</span>
-                <span className="text-white ml-2">
+                <span className="text-muted-foreground">AI Model:</span>
+                <span className="text-foreground ml-2">
                   {currentApiKey ? 'GPT-4' : 'Yapılandırılmadı'}
                 </span>
               </div>
@@ -230,37 +245,37 @@ function SettingsPanel({ apiKey, onApiKeySave, onBack }) {
         </div>
 
         {/* Privacy Information */}
-        <div className="panel bg-green-900/20 border-green-700">
-          <div className="panel-header bg-green-800/50">
+        <div className="bg-green-500/10 border border-green-500/20 rounded-lg">
+          <div className="bg-green-500/20 px-4 py-3 border-b border-green-500/20 font-medium">
             <span>Gizlilik & Güvenlik</span>
           </div>
-          <div className="panel-content">
-            <div className="space-y-3 text-sm text-green-100">
+          <div className="p-4">
+            <div className="space-y-3 text-sm">
               <div className="flex items-start space-x-3">
-                <CheckCircle className="w-5 h-5 text-green-400 mt-0.5 flex-shrink-0" />
+                <CheckCircle className="w-5 h-5 text-green-500 mt-0.5 flex-shrink-0" />
                 <div>
-                  <p className="font-medium">Yerel Veri Depolama</p>
-                  <p className="text-green-200">
+                  <p className="font-medium text-foreground">Yerel Veri Depolama</p>
+                  <p className="text-muted-foreground">
                     Tüm dosyalarınız ve sohbet geçmişi sadece cihazınızda saklanır
                   </p>
                 </div>
               </div>
               
               <div className="flex items-start space-x-3">
-                <CheckCircle className="w-5 h-5 text-green-400 mt-0.5 flex-shrink-0" />
+                <CheckCircle className="w-5 h-5 text-green-500 mt-0.5 flex-shrink-0" />
                 <div>
-                  <p className="font-medium">Şifrelenmiş API Anahtarı</p>
-                  <p className="text-green-200">
+                  <p className="font-medium text-foreground">Şifrelenmiş API Anahtarı</p>
+                  <p className="text-muted-foreground">
                     API anahtarınız güvenli şekilde şifrelenir
                   </p>
                 </div>
               </div>
               
               <div className="flex items-start space-x-3">
-                <CheckCircle className="w-5 h-5 text-green-400 mt-0.5 flex-shrink-0" />
+                <CheckCircle className="w-5 h-5 text-green-500 mt-0.5 flex-shrink-0" />
                 <div>
-                  <p className="font-medium">İnternet Bağlantısı</p>
-                  <p className="text-green-200">
+                  <p className="font-medium text-foreground">İnternet Bağlantısı</p>
+                  <p className="text-muted-foreground">
                     Sadece OpenAI API'ye bağlanır, başka hiçbir yere veri gönderilmez
                   </p>
                 </div>
@@ -270,17 +285,17 @@ function SettingsPanel({ apiKey, onApiKeySave, onBack }) {
         </div>
 
         {/* Help & Support */}
-        <div className="panel">
-          <div className="panel-header">
+        <div className="bg-card border border-border rounded-lg">
+          <div className="bg-muted/50 px-4 py-3 border-b border-border font-medium">
             <span>Yardım & Destek</span>
           </div>
-          <div className="panel-content">
+          <div className="p-4">
             <div className="space-y-3 text-sm">
               <div>
-                <p className="text-gray-300 mb-2">
+                <p className="text-foreground mb-2">
                   LawInAI kullanırken sorun yaşıyorsanız:
                 </p>
-                <ul className="space-y-1 text-gray-400">
+                <ul className="space-y-1 text-muted-foreground">
                   <li>• API anahtarınızın doğru olduğundan emin olun</li>
                   <li>• İnternet bağlantınızı kontrol edin</li>
                   <li>• Uygulamayı yeniden başlatmayı deneyin</li>

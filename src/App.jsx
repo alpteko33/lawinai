@@ -15,12 +15,28 @@ import {
 
 function App() {
   const [activeView, setActiveView] = useState('login'); // login, welcome, editor, settings
+  const [darkMode, setDarkMode] = useState(true); // New dark mode state
   
   // Force login screen at component mount (especially for Electron)
   useEffect(() => {
     console.log('App mounted, forcing login screen');
     setActiveView('login');
   }, []);
+  
+  // Theme management
+  useEffect(() => {
+    const root = window.document.documentElement;
+    if (darkMode) {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+    }
+  }, [darkMode]);
+
+  const toggleTheme = () => {
+    setDarkMode(!darkMode);
+  };
+
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [apiKey, setApiKey] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -221,6 +237,8 @@ function App() {
         onOpenProject={handleOpenProject}
         onOpenSettings={handleOpenSettingsFromLogin}
         onContinue={handleContinueToApp}
+        darkMode={darkMode}
+        onToggleTheme={toggleTheme}
       />
     );
   }
@@ -228,7 +246,7 @@ function App() {
   // Show welcome screen only on first visit
   if (activeView === 'welcome') {
     return (
-      <div className="h-screen bg-gray-900 text-white">
+      <div className="h-screen bg-background text-foreground">
         <WelcomeScreen 
           onGetStarted={() => setActiveView('editor')}
           onUploadFile={handleFileUpload}
@@ -240,11 +258,13 @@ function App() {
   // Show settings panel if needed
   if (activeView === 'settings') {
     return (
-      <div className="h-screen bg-gray-900 text-white">
+      <div className="h-screen bg-background text-foreground">
         <SettingsPanel 
           apiKey={apiKey}
           onApiKeySave={handleApiKeySave}
           onBack={() => setActiveView('login')}
+          darkMode={darkMode}
+          onToggleTheme={toggleTheme}
         />
       </div>
     );
@@ -252,13 +272,15 @@ function App() {
 
   // Main Cursor-like Layout
   return (
-    <div className="h-screen bg-gray-900 text-white flex flex-col">
+    <div className="h-screen bg-background text-foreground flex flex-col">
       {/* Header Bar */}
       <HeaderBar 
         currentDocument={currentDocument}
         onExport={handleExport}
         onNewDocument={handleNewDocument}
         onOpenSettings={() => setActiveView('settings')}
+        darkMode={darkMode}
+        onToggleTheme={toggleTheme}
       />
 
       {/* 3-Panel Layout */}

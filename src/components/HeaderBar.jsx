@@ -1,5 +1,5 @@
 import React from 'react';
-import { Scale, Download, FileText, Settings, User } from 'lucide-react';
+import { Scale, Download, FileText, Settings, User, Sun, Moon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -11,22 +11,22 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 
-function HeaderBar({ currentDocument, onExport, onNewDocument, onOpenSettings }) {
+function HeaderBar({ currentDocument, onExport, onNewDocument, onOpenSettings, darkMode, onToggleTheme }) {
   return (
-    <div className="h-14 bg-gray-900 border-b border-gray-700 flex items-center justify-between px-4">
+    <div className="h-14 bg-card border-b border-border flex items-center justify-between px-4">
       {/* Left: App Logo & Document Title */}
       <div className="flex items-center space-x-4">
         <div className="flex items-center space-x-2">
-          <Scale className="w-6 h-6 text-law-gold" />
-          <span className="text-lg font-bold text-white">LawInAI</span>
+          <Scale className="w-6 h-6 text-primary" />
+          <span className="text-lg font-bold text-foreground">LawInAI</span>
           <Badge variant="secondary" className="text-xs">Pro</Badge>
         </div>
         
-        <div className="h-6 w-px bg-gray-600" />
+        <div className="h-6 w-px bg-border" />
         
         <div className="flex items-center space-x-2">
-          <FileText className="w-4 h-4 text-gray-400" />
-          <span className="text-sm text-gray-300">
+          <FileText className="w-4 h-4 text-muted-foreground" />
+          <span className="text-sm text-foreground">
             {currentDocument?.title || 'Yeni Dilekçe'}
           </span>
           {currentDocument?.hasChanges && (
@@ -43,7 +43,6 @@ function HeaderBar({ currentDocument, onExport, onNewDocument, onOpenSettings })
           variant="outline" 
           size="sm"
           onClick={onNewDocument}
-          className="border-gray-600 text-gray-300 hover:bg-gray-700"
         >
           <FileText className="w-4 h-4 mr-2" />
           Yeni
@@ -54,16 +53,15 @@ function HeaderBar({ currentDocument, onExport, onNewDocument, onOpenSettings })
             <Button 
               variant="outline" 
               size="sm"
-              className="border-gray-600 text-gray-300 hover:bg-gray-700"
             >
               <Download className="w-4 h-4 mr-2" />
               Export
             </Button>
           </DialogTrigger>
-          <DialogContent className="bg-gray-800 border-gray-600">
+          <DialogContent className="bg-card border-border">
             <DialogHeader>
-              <DialogTitle className="text-white">Dilekçeyi Dışa Aktar</DialogTitle>
-              <DialogDescription className="text-gray-400">
+              <DialogTitle className="text-foreground">Dilekçeyi Dışa Aktar</DialogTitle>
+              <DialogDescription className="text-muted-foreground">
                 Dilekçenizi farklı formatlarda kaydedin
               </DialogDescription>
             </DialogHeader>
@@ -85,7 +83,6 @@ function HeaderBar({ currentDocument, onExport, onNewDocument, onOpenSettings })
               <Button 
                 onClick={() => onExport('txt')}
                 variant="outline"
-                className="border-gray-600 text-gray-300"
               >
                 <FileText className="w-4 h-4 mr-2" />
                 TXT
@@ -93,7 +90,6 @@ function HeaderBar({ currentDocument, onExport, onNewDocument, onOpenSettings })
               <Button 
                 onClick={() => window.print()}
                 variant="outline"
-                className="border-gray-600 text-gray-300"
               >
                 <Download className="w-4 h-4 mr-2" />
                 Yazdır
@@ -102,13 +98,21 @@ function HeaderBar({ currentDocument, onExport, onNewDocument, onOpenSettings })
           </DialogContent>
         </Dialog>
 
-        <div className="h-6 w-px bg-gray-600" />
+        <div className="h-6 w-px bg-border" />
+
+        <Button 
+          variant="ghost" 
+          size="sm"
+          onClick={onToggleTheme}
+          title={darkMode ? 'Açık tema' : 'Koyu tema'}
+        >
+          {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+        </Button>
 
         <Button 
           variant="ghost" 
           size="sm"
           onClick={onOpenSettings}
-          className="text-gray-400 hover:text-white hover:bg-gray-700"
         >
           <Settings className="w-4 h-4" />
         </Button>
@@ -116,7 +120,6 @@ function HeaderBar({ currentDocument, onExport, onNewDocument, onOpenSettings })
         <Button 
           variant="ghost" 
           size="sm"
-          className="text-gray-400 hover:text-white hover:bg-gray-700"
         >
           <User className="w-4 h-4" />
         </Button>

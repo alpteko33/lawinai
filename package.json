@@ -1,0 +1,82 @@
+{
+  "name": "lawinai",
+  "version": "1.0.0",
+  "description": "AI-powered legal assistant for Turkish lawyers",
+  "main": "main.js",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dev": "concurrently \"npm run dev:vite\" \"wait-on http://localhost:5174 && electron .\"",
+    "dev:vite": "vite --port 5174",
+    "build": "vite build",
+    "dist": "npm run build && electron-builder",
+    "pack": "electron-builder --dir",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "keywords": [
+    "legal",
+    "ai",
+    "lawyer",
+    "turkish",
+    "assistant",
+    "electron"
+  ],
+  "author": "LawInAI Team",
+  "license": "MIT",
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.2.1",
+    "concurrently": "^8.2.2",
+    "electron": "^28.1.0",
+    "electron-builder": "^24.9.1",
+    "vite": "^5.0.10",
+    "wait-on": "^7.2.0"
+  },
+  "dependencies": {
+    "@nlux/react": "^2.17.1",
+    "@radix-ui/react-dialog": "^1.1.14",
+    "@radix-ui/react-scroll-area": "^1.2.9",
+    "@radix-ui/react-slot": "^1.2.3",
+    "@radix-ui/react-tabs": "^1.1.12",
+    "@tailwindcss/typography": "^0.5.16",
+    "@themaximalist/llm.js": "^1.0.1",
+    "autoprefixer": "^10.4.16",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "electron-store": "^8.1.0",
+    "lucide-react": "^0.300.0",
+    "mammoth": "^1.6.0",
+    "pdf-parse": "^1.1.1",
+    "postcss": "^8.4.32",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-pdf": "^7.6.0",
+    "react-resizable-panels": "^3.0.3",
+    "tailwind-merge": "^3.3.1",
+    "tailwindcss": "^3.4.0",
+    "tailwindcss-animate": "^1.0.7"
+  },
+  "build": {
+    "appId": "com.lawinai.desktop",
+    "productName": "LawInAI",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "dist/**/*",
+      "main.js",
+      "preload.js",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": "dmg"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  }
+}

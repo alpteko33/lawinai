@@ -187,6 +187,31 @@
   }
 }
 
+/* PDF Viewer Styles */
+.react-pdf__Page {
+  margin: 0 auto;
+  display: flex !important;
+  flex-direction: column;
+  align-items: center;
+}
+
+.react-pdf__Page__canvas {
+  max-width: 100%;
+  height: auto !important;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.react-pdf__Page__textContent {
+  top: 0;
+  left: 0;
+  transform: none !important;
+}
+
+.react-pdf__Page__annotations {
+  top: 0;
+  left: 0;
+  transform: none !important;
+}
 
 
 @layer base {

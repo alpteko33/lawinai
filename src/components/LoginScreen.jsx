@@ -57,7 +57,7 @@ function LoginScreen({ onOpenProject, onOpenSettings, onContinue, darkMode, onTo
       id: 'settings',
       icon: Settings,
       title: 'Ayarlar',
-      description: 'AI API anahtarını yapılandırın',
+      description: 'Uygulama ayarlarını görüntüleyin',
       onClick: onOpenSettings,
       primary: false
     }
@@ -116,7 +116,7 @@ function LoginScreen({ onOpenProject, onOpenSettings, onContinue, darkMode, onTo
             <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-foreground to-primary bg-clip-text text-transparent">
               LawInAI
             </h1>
-            <p className="text-lg text-muted-foreground">Hukuki AI Asistanınız</p>
+            <p className={`text-lg ${darkMode ? 'text-white' : 'text-foreground'}`}>Hukuki AI Asistanınız</p>
           </div>
 
           {/* Ana Eylemler */}
@@ -138,11 +138,11 @@ function LoginScreen({ onOpenProject, onOpenSettings, onContinue, darkMode, onTo
                     <div className={`p-3 rounded-lg ${
                       action.primary ? 'bg-primary-foreground/20' : 'bg-muted group-hover:bg-muted/80'
                     }`}>
-                      <Icon className="w-6 h-6" />
+                      <Icon className={`w-6 h-6 ${darkMode ? 'text-white' : 'text-foreground'}`} />
                     </div>
                     <div className="flex-1 text-left">
-                      <h3 className="font-semibold text-lg">{action.title}</h3>
-                      <p className="text-sm text-muted-foreground">{action.description}</p>
+                      <h3 className={`font-semibold text-lg ${darkMode ? 'text-white' : 'text-foreground'}`}>{action.title}</h3>
+                      <p className={`text-sm ${action.primary ? (darkMode ? 'text-white' : 'text-white') : (darkMode ? 'text-white' : 'text-muted-foreground')}`}>{action.description}</p>
                     </div>
                     <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:text-foreground transition-colors" />
                   </div>
@@ -191,17 +191,17 @@ function LoginScreen({ onOpenProject, onOpenSettings, onContinue, darkMode, onTo
 
           {/* Alt Bilgi */}
           <div className="mt-12 text-center">
-            <p className="text-sm text-muted-foreground mb-2">
+            <p className={`text-sm mb-2 ${darkMode ? 'text-white' : 'text-foreground'}`}>
               Yapay zeka ile hukuki süreçlerinizi hızlandırın
             </p>
-            <div className="flex items-center justify-center space-x-4 text-xs text-muted-foreground">
+            <div className="flex items-center justify-center space-x-4 text-xs">
               <span className="flex items-center space-x-1">
                 <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-                <span>Güvenli & Yerel</span>
+                <span className={darkMode ? 'text-white' : 'text-foreground'}>Güvenli & Yerel</span>
               </span>
               <span className="flex items-center space-x-1">
                 <div className="w-2 h-2 bg-primary rounded-full"></div>
-                <span>Türk Hukukuna Özel</span>
+                <span className={darkMode ? 'text-white' : 'text-foreground'}>Türk Hukukuna Özel</span>
               </span>
             </div>
           </div>

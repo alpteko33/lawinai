@@ -19,7 +19,6 @@ LawInAI, Türk avukatlar için geliştirilmiş yapay zeka destekli hukuki asista
 
 - **Node.js** (v18 veya üzeri)
 - **npm** veya **yarn**
-- **OpenAI API Key** ([Buradan alın](https://platform.openai.com/api-keys))
 
 ### Kurulum
 
@@ -38,10 +37,6 @@ LawInAI, Türk avukatlar için geliştirilmiş yapay zeka destekli hukuki asista
    ```bash
    npm run dev
    ```
-
-4. **API anahtarınızı ayarlayın:**
-   - Uygulama açıldıktan sonra **Ayarlar** sekmesine gidin
-   - OpenAI API anahtarınızı girin ve kaydedin
 
 ## 📱 Kullanım
 
@@ -111,22 +106,25 @@ lawinai/
 └── README.md
 ```
 
-## 🔧 API Konfigürasyonu
+## 🤖 AI Teknolojisi
 
-### OpenAI API Anahtarı
+### Google Gemini AI
 
-1. [OpenAI Platform](https://platform.openai.com/api-keys) adresine gidin
-2. Yeni API anahtarı oluşturun
-3. Anahtarı LawInAI ayarlarında kaydedin
+LawInAI, Google'ın en gelişmiş yapay zeka teknolojisi **Gemini** ile çalışır:
 
-**Not:** API anahtarınız sadece cihazınızda saklanır, hiçbir yere gönderilmez.
+- ✅ **Türk Hukukuna Özel** - Türk hukuk sistemine özel eğitilmiş
+- ✅ **Lisanslı Kullanım** - Ticari kullanım için lisanslı
+- ✅ **API Key Gerektirmez** - Kullanıcıların API anahtarı girmesi gerekmez
+- ✅ **Güncel Bilgi** - Sürekli güncellenen hukuki veri tabanı
+
+**Not:** Tüm AI işlemleri güvenli şekilde Google'ın sunucularında gerçekleştirilir.
 
 ## 🔒 Gizlilik & Güvenlik
 
-- ✅ **Yerel Depolama** - Tüm veriler cihazınızda saklanır
-- ✅ **Şifrelenmiş API** - API anahtarı güvenli şekilde şifrelenir
+- ✅ **Yerel Depolama** - Tüm belgeler cihazınızda saklanır
+- ✅ **Güvenli AI** - Google'ın güvenli sunucularında işlenir
 - ✅ **No Tracking** - Hiçbir kişisel veri toplanmaz
-- ✅ **Offline-Ready** - İnternet sadece AI yanıtları için gerekli
+- ✅ **Lisanslı Kullanım** - Ticari kullanım hakları dahil
 
 ## 📋 Desteklenen Dosya Formatları
 

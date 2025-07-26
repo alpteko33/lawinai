@@ -1,104 +1,133 @@
-import React from 'react';
-import { Scale, Download, FileText, Settings, User, Sun, Moon } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Scale, Settings, User, Sun, Moon, Download, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
+import udfService from '../services/udfService';
 
 function HeaderBar({ currentDocument, onExport, onNewDocument, onOpenSettings, darkMode, onToggleTheme }) {
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const exportMenuRef = useRef(null);
+
+  // Click outside handler
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(event.target)) {
+        setExportMenuOpen(false);
+      }
+    };
+
+    if (exportMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    } else {
+      document.removeEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [exportMenuOpen]);
+
+  // UDF Export handler
+  const handleUDFExport = async () => {
+    if (!currentDocument?.content) {
+      alert('Export edilecek içerik bulunamadı');
+      return;
+    }
+
+    try {
+      setIsExporting(true);
+      
+      // UDF dosyası oluştur
+      const udfBlob = await udfService.createUDF(
+        currentDocument.content,
+        currentDocument.title || 'Hukuki Metin'
+      );
+      
+      // Dosyayı indir
+      const filename = `${currentDocument.title || 'hukuki-metin'}.udf`;
+      udfService.downloadUDF(udfBlob, filename);
+      
+      console.log('UDF export başarılı');
+    } catch (error) {
+      console.error('UDF export hatası:', error);
+      alert('UDF dosyası oluşturulurken hata oluştu: ' + error.message);
+    } finally {
+      setIsExporting(false);
+      setExportMenuOpen(false);
+    }
+  };
+
+  // PDF Export handler
+  const handlePDFExport = () => {
+    if (onExport) {
+      onExport('pdf');
+    }
+    setExportMenuOpen(false);
+  };
+
   return (
-    <div className="h-14 bg-card border-b border-border flex items-center justify-between px-4">
+    <div className="h-14 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-4">
       {/* Left: App Logo & Document Title */}
       <div className="flex items-center space-x-4">
         <div className="flex items-center space-x-2">
           <Scale className="w-6 h-6 text-primary" />
-          <span className="text-lg font-bold text-foreground">LawInAI</span>
-          <Badge variant="secondary" className="text-xs">Pro</Badge>
+          <span className="text-base font-bold text-gray-900 dark:text-gray-100">LawInAI</span>
         </div>
         
-        <div className="h-6 w-px bg-border" />
-        
-        <div className="flex items-center space-x-2">
-          <FileText className="w-4 h-4 text-muted-foreground" />
-          <span className="text-sm text-foreground">
-            {currentDocument?.title || 'Yeni Dilekçe'}
-          </span>
-          {currentDocument?.hasChanges && (
-            <Badge variant="outline" className="text-xs text-orange-400 border-orange-400">
-              Kaydedilmedi
-            </Badge>
-          )}
-        </div>
+        <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
       </div>
 
       {/* Right: Actions & User Menu */}
       <div className="flex items-center space-x-2">
-        <Button 
-          variant="outline" 
-          size="sm"
-          onClick={onNewDocument}
-        >
-          <FileText className="w-4 h-4 mr-2" />
-          Yeni
-        </Button>
+        {/* Export Dropdown Menu */}
+        <div className="relative" ref={exportMenuRef}>
+          <Button 
+            variant="ghost" 
+            size="sm"
+            onClick={() => setExportMenuOpen(!exportMenuOpen)}
+            disabled={!currentDocument?.content || isExporting}
+            title="Dokümanı Dışa Aktar"
+          >
+            {isExporting ? (
+              <div className="w-4 h-4 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+            ) : (
+              <Download className="w-4 h-4" />
+            )}
+          </Button>
 
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button 
-              variant="outline" 
-              size="sm"
-            >
-              <Download className="w-4 h-4 mr-2" />
-              Export
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="bg-card border-border">
-            <DialogHeader>
-              <DialogTitle className="text-foreground">Dilekçeyi Dışa Aktar</DialogTitle>
-              <DialogDescription className="text-muted-foreground">
-                Dilekçenizi farklı formatlarda kaydedin
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid grid-cols-2 gap-3 mt-4">
-              <Button 
-                onClick={() => onExport('pdf')}
-                className="bg-red-600 hover:bg-red-700"
-              >
-                <FileText className="w-4 h-4 mr-2" />
-                PDF
-              </Button>
-              <Button 
-                onClick={() => onExport('docx')}
-                className="bg-blue-600 hover:bg-blue-700"
-              >
-                <FileText className="w-4 h-4 mr-2" />
-                DOCX
-              </Button>
-              <Button 
-                onClick={() => onExport('txt')}
-                variant="outline"
-              >
-                <FileText className="w-4 h-4 mr-2" />
-                TXT
-              </Button>
-              <Button 
-                onClick={() => window.print()}
-                variant="outline"
-              >
-                <Download className="w-4 h-4 mr-2" />
-                Yazdır
-              </Button>
+          {/* Export Menu Dropdown */}
+          {exportMenuOpen && (
+            <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50">
+              <div className="py-2">
+                <button
+                  onClick={handleUDFExport}
+                  disabled={isExporting}
+                  className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-3"
+                >
+                  <FileText className="w-4 h-4" />
+                  <div>
+                    <div className="font-medium">UDF Formatı</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400">UYAP uyumlu format</div>
+                  </div>
+                </button>
+                
+                <button
+                  onClick={handlePDFExport}
+                  disabled={isExporting}
+                  className="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-3"
+                >
+                  <FileText className="w-4 h-4" />
+                  <div>
+                    <div className="font-medium">PDF Formatı</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400">Portable Document Format</div>
+                  </div>
+                </button>
+              </div>
             </div>
-          </DialogContent>
-        </Dialog>
+          )}
+        </div>
 
-        <div className="h-6 w-px bg-border" />
+        <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
 
         <Button 
           variant="ghost" 

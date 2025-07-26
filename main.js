@@ -1,10 +1,6 @@
-import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
-import path from 'path';
-import Store from 'electron-store';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const path = require('path');
+const Store = require('electron-store');
 
 // Güvenli storage için
 const store = new Store();
@@ -27,15 +23,35 @@ function createWindow() {
       contextIsolation: true,
       enableRemoteModule: false,
       preload: path.join(__dirname, 'preload.js'),
-      webSecurity: true
+      webSecurity: !isDev, // Development modunda webSecurity'i kapat
+      allowRunningInsecureContent: false,
+      experimentalFeatures: false
     },
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     frame: true,
     resizable: true,
     show: false, // Önce yükle, sonra göster
-    icon: path.join(__dirname, 'assets', 'icon.png'),
     backgroundColor: '#1a1a1a' // Dark theme
   });
+
+  // Content Security Policy ayarla - sadece production'da
+  if (!isDev) {
+    mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+      const cspPolicy = "default-src 'self' 'unsafe-inline' data: https:; " +
+        "script-src 'self' 'unsafe-inline'; " +
+        "style-src 'self' 'unsafe-inline'; " +
+        "img-src 'self' data: https:; " +
+        "font-src 'self' data:; " +
+        "connect-src 'self' https: wss:;";
+      
+      callback({
+        responseHeaders: {
+          ...details.responseHeaders,
+          'Content-Security-Policy': [cspPolicy]
+        }
+      });
+    });
+  }
 
   // Development modunda local server'a bağlan
   if (isDev) {
@@ -43,7 +59,9 @@ function createWindow() {
     mainWindow.webContents.openDevTools();
   } else {
     // Production modunda build dosyalarını yükle
-    mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
+    const indexPath = path.join(__dirname, '../dist/index.html');
+    console.log('Loading file:', indexPath);
+    mainWindow.loadFile(indexPath);
   }
 
   // Pencere hazır olduğunda göster
@@ -65,6 +83,14 @@ function createWindow() {
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: 'deny' };
+  });
+
+  // Web güvenliği - dangerous URLs'leri engelle  
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (url !== mainWindow.webContents.getURL()) {
+      event.preventDefault();
+      shell.openExternal(url);
+    }
   });
 }
 
@@ -97,22 +123,61 @@ app.on('web-contents-created', (event, contents) => {
 
 // IPC Handlers - Frontend ile backend arası iletişim
 
-// Dosya seçme dialog'u
+// Dosya seçme dialog'u - Enhanced with better logging and error handling
 ipcMain.handle('dialog:openFile', async () => {
-  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
-    properties: ['openFile', 'multiSelections'],
-    filters: [
-      { name: 'PDF Files', extensions: ['pdf'] },
-      { name: 'Word Documents', extensions: ['doc', 'docx'] },
-      { name: 'Text Files', extensions: ['txt'] },
-      { name: 'All Files', extensions: ['*'] }
-    ]
-  });
-  
-  if (canceled) {
-    return null;
-  } else {
-    return filePaths;
+  try {
+    console.log('Electron Main: Opening file dialog');
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openFile', 'multiSelections'],
+      filters: [
+        { name: 'Legal Documents', extensions: ['udf', 'pdf', 'doc', 'docx', 'txt'] },
+        { name: 'UDF Documents', extensions: ['udf'] },
+        { name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'tiff', 'tif'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    });
+    
+    console.log('Electron Main: File dialog result:', result);
+    console.log('Electron Main: Result type:', typeof result);
+    console.log('Electron Main: Result structure:', {
+      canceled: result.canceled,
+      filePaths: result.filePaths,
+      keys: Object.keys(result)
+    });
+    
+    // Return the full result object instead of just filePaths
+    return result;
+  } catch (error) {
+    console.error('Electron Main: File dialog error:', error);
+    return { 
+      canceled: true, 
+      filePaths: [],
+      error: error.message 
+    };
+  }
+});
+
+// Dosya okuma - File System API
+ipcMain.handle('fs:readFile', async (event, filePath) => {
+  try {
+    const fs = require('fs');
+    const buffer = fs.readFileSync(filePath);
+    return buffer;
+  } catch (error) {
+    console.error('File read error:', error);
+    throw error;
+  }
+});
+
+// Dosya okuma - Base64 format
+ipcMain.handle('fs:readFileAsBase64', async (event, filePath) => {
+  try {
+    const fs = require('fs');
+    const buffer = fs.readFileSync(filePath);
+    return buffer.toString('base64');
+  } catch (error) {
+    console.error('File read as base64 error:', error);
+    throw error;
   }
 });
 
@@ -125,17 +190,6 @@ ipcMain.handle('store:set', async (event, key, value) => {
 // Ayarları al
 ipcMain.handle('store:get', async (event, key) => {
   return store.get(key);
-});
-
-// API key doğrulama için güvenli storage
-ipcMain.handle('secure:setApiKey', async (event, apiKey) => {
-  // Gerçek uygulamada şifreleme kullanılmalı
-  store.set('apiKey', apiKey);
-  return true;
-});
-
-ipcMain.handle('secure:getApiKey', async () => {
-  return store.get('apiKey', null);
 });
 
 // Uygulama versiyonu

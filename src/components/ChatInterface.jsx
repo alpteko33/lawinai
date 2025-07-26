@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Send, Bot, User, FileText, Download, Copy, Sparkles, AlertTriangle } from 'lucide-react';
 import clsx from 'clsx';
 
-function ChatInterface({ files, apiKey, onFileUpload }) {
+function ChatInterface({ files, onFileUpload }) {
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -42,7 +42,7 @@ function ChatInterface({ files, apiKey, onFileUpload }) {
     'Benzer içtihatları bul'
   ];
 
-  // Simulate AI response (in real app, this would call OpenAI API)
+  // Simulate Gemini AI response (in real app, this would call Google Gemini API)
   const simulateAIResponse = async (userMessage, fileContext) => {
     // Simulate thinking time
     await new Promise(resolve => setTimeout(resolve, 1500 + Math.random() * 2000));
@@ -142,11 +142,6 @@ Hangi konuda yardım istiyorsunuz?`
   // Handle message send
   const handleSendMessage = async () => {
     if (!inputValue.trim() || isLoading) return;
-    
-    if (!apiKey) {
-      alert('Lütfen önce Ayarlar bölümünden API anahtarınızı girin.');
-      return;
-    }
 
     const userMessage = inputValue.trim();
     setInputValue('');
@@ -227,7 +222,7 @@ Hangi konuda yardım istiyorsunuz?`
         {messages.length === 0 ? (
           <div className="text-center py-12">
             <Bot className="w-16 h-16 text-blue-400 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-white mb-2">AI Hukuki Asistanınız</h3>
+            <h3 className="text-xl font-semibold text-white mb-2">Gemini AI Hukuki Asistanınız</h3>
             <p className="text-gray-400 mb-8">
               {files.length > 0 
                 ? `${files.length} dosya yüklendi. Sorularınızı sorabilirsiniz.`

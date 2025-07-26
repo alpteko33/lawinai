@@ -1,20 +1,16 @@
-import { contextBridge, ipcRenderer } from 'electron';
+const { contextBridge, ipcRenderer } = require('electron');
 
 // Güvenli API bridge - frontend'den erişilebilir
 contextBridge.exposeInMainWorld('electronAPI', {
   // Dosya işlemleri
   openFileDialog: () => ipcRenderer.invoke('dialog:openFile'),
+  readFile: (filePath) => ipcRenderer.invoke('fs:readFile', filePath),
+  readFileAsBase64: (filePath) => ipcRenderer.invoke('fs:readFileAsBase64', filePath),
   
   // Storage işlemleri
   store: {
     set: (key, value) => ipcRenderer.invoke('store:set', key, value),
     get: (key) => ipcRenderer.invoke('store:get', key)
-  },
-  
-  // Güvenli API key yönetimi
-  security: {
-    setApiKey: (apiKey) => ipcRenderer.invoke('secure:setApiKey', apiKey),
-    getApiKey: () => ipcRenderer.invoke('secure:getApiKey')
   },
   
   // Uygulama bilgileri

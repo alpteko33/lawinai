@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Sparkles, Check, X, ChevronDown, FileText, File, Plus } from 'lucide-react';
 import FileViewer from './PDFViewer';
+import TipTapEditor from './TipTapEditor';
 
 function DocumentEditor({ 
   content, 
@@ -19,6 +20,7 @@ function DocumentEditor({
   activeTabId = null, // Currently active tab ID
   onTabChange = () => {}, // Tab change handler
   onTabClose = () => {}, // Tab close handler
+  onTabRename = () => {}, // Tab rename handler
 }) {
   const editorRef = useRef(null);
   const highlightRef = useRef(null);
@@ -27,6 +29,20 @@ function DocumentEditor({
   const [cursorPosition, setCursorPosition] = useState({ line: 1, column: 1 });
   const [scrollTop, setScrollTop] = useState(0);
   const [scrollLeft, setScrollLeft] = useState(0);
+  const [editingTabId, setEditingTabId] = useState(null);
+  const [editingTabTitle, setEditingTabTitle] = useState('');
+  
+  // Draggable and resizable state
+  const [isDragging, setIsDragging] = useState(false);
+  const [isResizing, setIsResizing] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [resizeStart, setResizeStart] = useState({ x: 0, y: 0 });
+  // Default size: Word document size (A4 equivalent)
+  const defaultSize = { width: '210mm', height: '297mm' }; // A4 size
+  const defaultPosition = { x: 50, y: 50 }; // Position to ensure full visibility
+  
+  const [containerPosition, setContainerPosition] = useState(defaultPosition);
+  const [containerSize, setContainerSize] = useState(defaultSize);
 
   // Find active tab
   const activeTab = openTabs.find(tab => tab.id === activeTabId);
@@ -37,27 +53,13 @@ function DocumentEditor({
   const displayContent = content + (pendingContent && isStreamingToEditor ? '\n\n' + pendingContent : '');
   const pendingStartPosition = content.length + (pendingContent && isStreamingToEditor ? 2 : 0); // +2 for \n\n
 
-  const handleTextChange = useCallback((e) => {
-    const value = e.target.value;
-    
+  const handleTextChange = useCallback((newContent) => {
     // If there's pending content, only update the original content part
     if (pendingContent && isStreamingToEditor) {
-      const pendingStart = content.length + 2; // +2 for \n\n
-      const originalContent = value.substring(0, pendingStart);
-      onChange(originalContent);
+      // For TipTap, we need to handle HTML content differently
+      onChange(newContent);
     } else {
-      onChange(value);
-    }
-    
-    // Update cursor position
-    const textarea = e.target;
-    if (textarea && textarea.selectionStart !== undefined) {
-    const text = value.substring(0, textarea.selectionStart);
-    const lines = text.split('\n');
-    setCursorPosition({
-      line: lines.length,
-      column: lines[lines.length - 1].length + 1
-    });
+      onChange(newContent);
     }
   }, [onChange, content, pendingContent, isStreamingToEditor]);
 
@@ -83,17 +85,69 @@ function DocumentEditor({
     }
   }, [scrollTop, scrollLeft]);
 
+  // Global mouse event listeners for dragging and resizing
+  useEffect(() => {
+    const handleGlobalMouseMove = (e) => {
+      if (isDragging) {
+        handleMouseMove(e);
+      }
+      if (isResizing) {
+        handleResizeMove(e);
+      }
+    };
+
+    const handleGlobalMouseUp = () => {
+      handleMouseUp();
+    };
+
+    if (isDragging || isResizing) {
+      document.addEventListener('mousemove', handleGlobalMouseMove);
+      document.addEventListener('mouseup', handleGlobalMouseUp);
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleGlobalMouseMove);
+      document.removeEventListener('mouseup', handleGlobalMouseUp);
+    };
+  }, [isDragging, isResizing, dragStart, resizeStart, containerPosition]);
+
   // Auto-resize textarea based on content
   useEffect(() => {
     if (editorRef.current) {
       const textarea = editorRef.current;
-      // Reset height to auto to get the correct scrollHeight
-      textarea.style.height = 'auto';
-      // Set height to scrollHeight to fit content, with minimum height
-      const minHeight = 700; // Approximate minimum height in pixels
-      textarea.style.height = Math.max(textarea.scrollHeight, minHeight) + 'px';
+      
+      // Use setTimeout to ensure DOM is updated
+      setTimeout(() => {
+        // Reset height to auto to get the correct scrollHeight
+        textarea.style.height = 'auto';
+        
+        // Calculate proper height based on content
+        const scrollHeight = textarea.scrollHeight;
+        const containerHeight = 297 * 3.779527559; // 297mm to pixels (1mm = 3.779527559px)
+        const padding = 40 * 3.779527559; // 40mm padding to pixels
+        const minHeight = containerHeight - padding; // A4 height minus padding
+        
+        // Set height to accommodate all content or minimum height, whichever is larger
+        const newHeight = Math.max(scrollHeight, minHeight);
+        textarea.style.height = newHeight + 'px';
+        
+        // Also adjust container height if needed
+        if (containerRef.current) {
+          const container = containerRef.current;
+          const containerNewHeight = Math.max(newHeight + (40 * 3.779527559), 297 * 3.779527559); // Add padding back
+          container.style.height = containerNewHeight + 'px';
+        }
+        
+        console.log('Textarea height adjusted:', {
+          scrollHeight,
+          minHeight,
+          newHeight,
+          contentLength: displayContent.length,
+          lines: displayContent.split('\n').length
+        });
+      }, 0);
     }
-  }, [content]);
+  }, [content, pendingContent, isStreamingToEditor, displayContent]);
 
   // Get precise character metrics from textarea
   const getTextMetrics = useCallback(() => {
@@ -212,6 +266,108 @@ function DocumentEditor({
     return title.substring(0, maxLength) + '...';
   };
 
+  // Handle tab rename
+  const handleTabRename = (tabId, newTitle) => {
+    if (onTabRename) {
+      onTabRename(tabId, newTitle);
+    }
+    setEditingTabId(null);
+    setEditingTabTitle('');
+  };
+
+  // Handle tab double click or right click
+  const handleTabEdit = (tab) => {
+    setEditingTabId(tab.id);
+    setEditingTabTitle(tab.title);
+  };
+
+  // Dragging handlers
+  const handleMouseDown = (e) => {
+    if (e.target === containerRef.current || e.target.closest('.drag-handle')) {
+      setIsDragging(true);
+      setDragStart({
+        x: e.clientX - containerPosition.x,
+        y: e.clientY - containerPosition.y
+      });
+    }
+  };
+
+  const handleMouseMove = (e) => {
+    if (isDragging) {
+      const newX = e.clientX - dragStart.x;
+      const newY = e.clientY - dragStart.y;
+      setContainerPosition({ x: newX, y: newY });
+    }
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+    setIsResizing(false);
+  };
+
+  // Resizing handlers
+  const handleResizeStart = (e, direction) => {
+    e.stopPropagation();
+    setIsResizing(true);
+    setResizeStart({
+      x: e.clientX,
+      y: e.clientY,
+      width: containerRef.current?.offsetWidth || 0,
+      height: containerRef.current?.offsetHeight || 0
+    });
+  };
+
+  const handleResizeMove = (e) => {
+    if (isResizing && containerRef.current) {
+      const deltaX = e.clientX - resizeStart.x;
+      const deltaY = e.clientY - resizeStart.y;
+      
+      const newWidth = Math.max(200, resizeStart.width + deltaX);
+      const newHeight = Math.max(200, resizeStart.height + deltaY);
+      
+      setContainerSize({
+        width: `${newWidth}px`,
+        height: `${newHeight}px`
+      });
+    }
+  };
+
+  // Keyboard shortcuts
+  const handleKeyDown = (e) => {
+    if (e.ctrlKey || e.metaKey) {
+      switch (e.key) {
+        case '0': // Ctrl+0: Reset position and size to default
+          e.preventDefault();
+          setContainerPosition(defaultPosition);
+          setContainerSize(defaultSize);
+          break;
+        case '=': // Ctrl+=: Increase size
+        case '+':
+          e.preventDefault();
+          if (containerRef.current) {
+            const currentWidth = containerRef.current.offsetWidth;
+            const currentHeight = containerRef.current.offsetHeight;
+            setContainerSize({
+              width: `${currentWidth + 50}px`,
+              height: `${currentHeight + 50}px`
+            });
+          }
+          break;
+        case '-': // Ctrl+-: Decrease size
+          e.preventDefault();
+          if (containerRef.current) {
+            const currentWidth = containerRef.current.offsetWidth;
+            const currentHeight = containerRef.current.offsetHeight;
+            setContainerSize({
+              width: `${Math.max(200, currentWidth - 50)}px`,
+              height: `${Math.max(200, currentHeight - 50)}px`
+            });
+          }
+          break;
+      }
+    }
+  };
+
   // Show changes summary - simplified
   const changesCount = diffHighlights ? diffHighlights.length : 0;
   const hasChanges = changesCount > 0;
@@ -232,36 +388,67 @@ function DocumentEditor({
                     : 'bg-transparent border-transparent text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
                 }`}
                 onClick={() => onTabChange(tab.id)}
+                onDoubleClick={() => handleTabEdit(tab)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  handleTabEdit(tab);
+                }}
               >
                 {getTabIcon(tab)}
-                <span className="text-sm font-medium truncate" title={tab.title}>
-                  {truncateTitle(tab.title)}
+                <span className="truncate">
+                  {editingTabId === tab.id ? (
+                    <input
+                      type="text"
+                      value={editingTabTitle}
+                      onChange={(e) => setEditingTabTitle(e.target.value)}
+                      onBlur={() => {
+                        if (editingTabTitle.trim()) {
+                          onTabRename(tab.id, editingTabTitle.trim());
+                        }
+                        setEditingTabId(null);
+                        setEditingTabTitle('');
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          if (editingTabTitle.trim()) {
+                            onTabRename(tab.id, editingTabTitle.trim());
+                          }
+                          setEditingTabId(null);
+                          setEditingTabTitle('');
+                        } else if (e.key === 'Escape') {
+                          setEditingTabId(null);
+                          setEditingTabTitle('');
+                        }
+                      }}
+                      className="bg-transparent border-none outline-none text-sm min-w-0"
+                      autoFocus
+                    />
+                  ) : (
+                    truncateTitle(tab.title)
+                  )}
                 </span>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onTabClose(tab.id);
-                  }}
-                  className="flex-shrink-0 w-4 h-4 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600 flex items-center justify-center"
-                >
-                  <X className="w-3 h-3" />
-                </button>
+                {openTabs.length > 1 && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onTabClose(tab.id);
+                    }}
+                    className="ml-1 p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
               </div>
             ))}
           </div>
 
           {/* New Tab Button */}
           <button
-            className="flex-shrink-0 ml-2 p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md"
             onClick={() => {
-              // Create new document tab
-              const documentTabs = openTabs.filter(t => t.type === 'document');
-              const newTabNumber = documentTabs.length;
-              const newTitle = newTabNumber === 0 ? 'Hukuki Metin' : `Hukuki Metin (${newTabNumber})`;
               const newTab = {
                 id: `doc-${Date.now()}`,
                 type: 'document',
-                title: newTitle,
+                title: 'Yeni Belge',
                 data: {
                   content: '',
                   hasChanges: false,
@@ -270,106 +457,91 @@ function DocumentEditor({
               };
               onTabChange(newTab.id, newTab);
             }}
-            title="Yeni Dilekçe"
+            className="ml-2 p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+            title="Yeni Sekme"
           >
             <Plus className="w-4 h-4" />
           </button>
         </div>
       </div>
 
-      {/* Tab Content */}
+      {/* Main Content */}
       <div className="flex-1 overflow-hidden">
-        {!activeTab ? (
-          // No tabs open - show welcome message
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center text-gray-500 dark:text-gray-400">
-              <FileText className="w-16 h-16 mx-auto mb-4 opacity-50" />
-              <p className="text-lg font-medium mb-2">Henüz açık sekme yok</p>
-              <p className="text-sm">Yeni bir dilekçe oluşturmak için + butonuna tıklayın</p>
-            </div>
-          </div>
-        ) : isPDFTab ? (
-          // File Viewer Tab (PDF/Images/TIFF)
-          <FileViewer 
-            fileUrl={activeTab.data.fileUrl} 
-            fileName={activeTab.title}
-            fileType={activeTab.data.fileType}
-          />
+        {isPDFTab ? (
+          // PDF Viewer Tab
+          <FileViewer file={activeTab.data.file} />
         ) : isDocumentTab ? (
-          // Document Editor Tab
+          // Document Editor Tab with TipTap
           <>
             {/* Paper Container - A4 Layout */}
-            <div className="flex-1 overflow-auto bg-gray-100 dark:bg-gray-900 p-8">
-              <div className="max-w-4xl mx-auto">
-                {/* A4 Paper Page */}
+            <div 
+              className="flex-1 overflow-auto bg-gray-100 dark:bg-gray-900 p-8"
+              onKeyDown={handleKeyDown}
+              tabIndex={0}
+            >
+              <div className="relative w-full h-full">
+                {/* A4 Paper Page - Draggable and Resizable */}
                 <div 
                   ref={containerRef} 
-                  className="bg-white dark:bg-gray-800 shadow-lg border border-gray-200 dark:border-gray-700 relative"
+                  className="bg-white dark:bg-gray-800 shadow-lg border border-gray-200 dark:border-gray-700 relative cursor-move"
                   style={{
-                    width: '100%',
+                    width: containerSize.width,
                     maxWidth: '280mm', // Expanded width
                     minHeight: '297mm', // A4 height
-                    height: 'auto', // Allow dynamic height
+                    height: containerSize.height, // Allow dynamic height
                     padding: '20mm', // Reduced margins for more space
                     fontFamily: "'Times New Roman', serif",
                     fontSize: '12pt',
                     lineHeight: '1.5',
                     margin: '0 auto',
-                    overflow: 'visible' // Allow content to overflow naturally
+                    overflow: 'visible', // Allow content to overflow naturally
+                    transform: `translate(${containerPosition.x}px, ${containerPosition.y}px)`,
+                    transition: isDragging || isResizing ? 'none' : 'transform 0.1s ease-out',
+                    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.1)' // Add subtle shadow for better visibility
                   }}
+                  onMouseDown={handleMouseDown}
                 >
-                  {/* Enhanced Editor with Diff Visualization */}
-                  {(diffHighlights && diffHighlights.length > 0) ? (
-                    // Show styled content with highlights
-                    <div
-                      className="w-full h-full p-0 border-none outline-none bg-transparent text-gray-900 dark:text-gray-100"
-                    style={{
-                      fontFamily: "'Times New Roman', serif",
-                      fontSize: '12pt',
-                      lineHeight: '1.5',
-                        minHeight: 'calc(297mm - 40mm)',
-                      whiteSpace: 'pre-wrap',
-                        wordWrap: 'break-word',
-                        overflow: 'auto'
-                      }}
-                      dangerouslySetInnerHTML={{
-                        __html: renderStyledContent()
-                      }}
-                    />
-                  ) : (
-                    // Show regular textarea when no highlights
-                  <textarea
-                    ref={editorRef}
-                      value={displayContent}
+                  {/* TipTap Editor */}
+                  <TipTapEditor
+                    content={displayContent}
                     onChange={handleTextChange}
-                    onSelect={handleSelection}
-                    onScroll={handleScroll}
-                                      placeholder=""
-                      className="w-full h-full resize-none border-none outline-none bg-transparent text-gray-900 dark:text-gray-100"
+                    placeholder="Hukuki metninizi buraya yazın..."
+                    className="h-full"
                     style={{
                       fontFamily: "'Times New Roman', serif",
                       fontSize: '12pt',
                       lineHeight: '1.5',
-                      tabSize: 4,
-                      overflow: 'hidden', // Remove textarea scroll
-                      overflowWrap: 'break-word', // Handle long words
-                      wordBreak: 'break-word', // Additional word breaking
-                      resize: 'none' // Prevent manual resizing
+                      minHeight: 'calc(297mm - 40mm)',
                     }}
                   />
-                  )}
 
                   {/* AI Processing Overlay */}
                   {isAIProcessing && (
-                    <div className="absolute inset-0 bg-black bg-opacity-10 flex items-center justify-center z-40">
-                      <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-lg border border-gray-200 dark:border-gray-700">
-                        <div className="flex items-center space-x-3">
-                          <Sparkles className="w-5 h-5 text-purple-600 animate-spin" />
-                          <span className="text-xs font-medium text-gray-900 dark:text-gray-100">
-                            AI dilekçenizi analiz ediyor...
-                          </span>
-                        </div>
+                    <div className="absolute inset-0 bg-white bg-opacity-75 dark:bg-gray-800 dark:bg-opacity-75 flex items-center justify-center z-10">
+                      <div className="flex items-center space-x-2 text-blue-600 dark:text-blue-400">
+                        <Sparkles className="w-5 h-5 animate-spin" />
+                        <span>AI metin oluşturuyor...</span>
                       </div>
+                    </div>
+                  )}
+
+                  {/* Pending Content Approval */}
+                  {pendingContent && isStreamingToEditor && (
+                    <div className="absolute bottom-4 right-4 flex space-x-2 z-20">
+                      <button
+                        onClick={onApprovePendingContent}
+                        className="px-3 py-1 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors flex items-center space-x-1"
+                      >
+                        <Check className="w-4 h-4" />
+                        <span>Onayla</span>
+                      </button>
+                      <button
+                        onClick={onRejectPendingContent}
+                        className="px-3 py-1 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors flex items-center space-x-1"
+                      >
+                        <X className="w-4 h-4" />
+                        <span>Reddet</span>
+                      </button>
                     </div>
                   )}
                 </div>

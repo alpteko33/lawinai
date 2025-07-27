@@ -4,11 +4,13 @@ import HeaderBar from './components/HeaderBar';
 import LeftSidebar from './components/LeftSidebar';
 import DocumentEditor from './components/DocumentEditor';
 import AIChatPanel from './components/AIChatPanel';
+import AITrainingPanel from './components/AITrainingPanel';
 import WelcomeScreen from './components/WelcomeScreen';
 import LoginScreen from './components/LoginScreen';
 import SettingsPanel from './components/SettingsPanel';
 import geminiService from './services/geminiService';
 import udfService from './services/udfService';
+import ragService from './services/ragService';
 import DiffMatchPatch from 'diff-match-patch';
 import {
   ResizablePanelGroup,
@@ -17,7 +19,7 @@ import {
 } from '@/components/ui/resizable';
 
 function App() {
-  const [activeView, setActiveView] = useState('login'); // login, welcome, editor, settings
+  const [activeView, setActiveView] = useState('login'); // login, welcome, editor, settings, training
   const [darkMode, setDarkMode] = useState(true); // New dark mode state
   
   // Force login screen at component mount (especially for Electron)
@@ -55,6 +57,8 @@ function App() {
   });
   const [isAITyping, setIsAITyping] = useState(false);
   const [chatMessages, setChatMessages] = useState([]);
+  const [chatTitle, setChatTitle] = useState('');
+  const [chatHistory, setChatHistory] = useState([]);
   
   // Checkpoint system for conversation and document state
   const [checkpoints, setCheckpoints] = useState([]);
@@ -208,6 +212,9 @@ function App() {
                 console.log('Updated files list after Electron upload:', updated);
                 return updated;
               });
+              
+              // Dosyayı RAG sistemine ekle
+              addFileToRAG(newFile);
             });
           } else {
             console.log('Electron file dialog cancelled or no files selected');
@@ -257,6 +264,9 @@ function App() {
             console.log('Files after adding:', updated);
             return updated;
           });
+          
+          // Dosyayı RAG sistemine ekle
+          addFileToRAG(newFile);
         });
       };
       
@@ -268,6 +278,44 @@ function App() {
       setTimeout(() => {
         document.body.removeChild(input);
       }, 1000);
+    }
+  };
+
+  // Dosyayı RAG sistemine ekle
+  const addFileToRAG = async (file) => {
+    try {
+      if (geminiService.isSupportedFileType(file.type)) {
+        console.log(`Dosya RAG sistemine ekleniyor: ${file.name}`);
+        
+        // Dosya içeriğini al
+        let fileContent;
+        if (file.path && window.electronAPI) {
+          // Electron - dosyayı oku
+          const base64Data = await window.electronAPI.readFileAsBase64(file.path);
+          fileContent = base64Data;
+        } else if (file.file) {
+          // Web - FileReader kullan
+          fileContent = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(e.target.result);
+            reader.readAsText(file.file);
+          });
+        }
+        
+        if (fileContent) {
+          const document = {
+            id: file.id,
+            name: file.name,
+            content: fileContent,
+            type: file.type
+          };
+          
+          await ragService.addDocument(document);
+          console.log(`Dosya başarıyla RAG sistemine eklendi: ${file.name}`);
+        }
+      }
+    } catch (error) {
+      console.error(`RAG dosya ekleme hatası: ${file.name}`, error);
     }
   };
 
@@ -322,6 +370,31 @@ function App() {
       }
       return filtered;
     });
+  };
+
+  const handleTabRename = (tabId, newTitle) => {
+    setOpenTabs(prev => prev.map(tab => 
+      tab.id === tabId 
+        ? { ...tab, title: newTitle }
+        : tab
+    ));
+  };
+
+  // Load chat from history
+  const handleLoadChatFromHistory = (chatHistoryItem) => {
+    setChatMessages(chatHistoryItem.messages);
+    setChatTitle(chatHistoryItem.title);
+    setCheckpoints([]);
+    setEditMode(null);
+    setIsStreaming(false);
+    setStreamingContent('');
+    setPendingContent('');
+    setStreamingToEditor(false);
+    setApprovedChanges(new Set());
+    setRejectedChanges(new Set());
+    
+    // Clear Gemini chat history and reload with historical messages
+    geminiService.clearChat();
   };
 
   // File management functions
@@ -542,6 +615,12 @@ function App() {
     const updatedMessages = [...chatMessages, userMessage];
     setChatMessages(updatedMessages);
     
+    // Generate chat title on first message
+    if (chatMessages.length === 0) {
+      const newTitle = generateChatTitle(message);
+      setChatTitle(newTitle);
+    }
+    
     // Create checkpoint for user message
     createCheckpoint(updatedMessages.length - 1, currentDocument);
     
@@ -685,9 +764,27 @@ function App() {
     }
   };
 
+  // Generate chat title based on first user message
+  const generateChatTitle = (message) => {
+    const words = message.split(' ').slice(0, 4);
+    return words.join(' ') + (message.split(' ').length > 4 ? '...' : '');
+  };
+
   // Handle clear chat messages
   const handleClearChat = () => {
+    // Save current chat to history if it has messages
+    if (chatMessages.length > 0) {
+      const chatToSave = {
+        id: Date.now(),
+        title: chatTitle || 'Yeni Sohbet',
+        messages: [...chatMessages],
+        timestamp: new Date().toISOString()
+      };
+      setChatHistory(prev => [chatToSave, ...prev.slice(0, 9)]); // Keep last 10 chats
+    }
+    
     setChatMessages([]);
+    setChatTitle('');
     setCheckpoints([]);
     setEditMode(null);
     setIsStreaming(false);
@@ -1148,6 +1245,7 @@ function App() {
         onContinue={handleContinueToApp}
         darkMode={darkMode}
         onToggleTheme={toggleTheme}
+        onOpenTraining={() => setActiveView('training')}
       />
     );
   }
@@ -1173,6 +1271,15 @@ function App() {
           darkMode={darkMode}
           onToggleTheme={toggleTheme}
         />
+      </div>
+    );
+  }
+
+  // Show AI training panel if needed
+  if (activeView === 'training') {
+    return (
+      <div className="h-screen bg-background text-foreground">
+        <AITrainingPanel />
       </div>
     );
   }
@@ -1231,6 +1338,7 @@ function App() {
             activeTabId={activeTabId}
             onTabChange={handleTabChange}
             onTabClose={handleTabClose}
+            onTabRename={handleTabRename}
           />
         </ResizablePanel>
 
@@ -1252,6 +1360,9 @@ function App() {
             editMode={editMode}
             uploadedFiles={uploadedFiles} // Yüklenen dosyaları AI chat paneline gönder
             openTabs={openTabs} // Açık sekmeler listesi
+            chatTitle={chatTitle}
+            chatHistory={chatHistory}
+            onLoadChatFromHistory={handleLoadChatFromHistory}
           />
         </ResizablePanel>
       </ResizablePanelGroup>

@@ -1,12 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Send, Copy, Check, X, RefreshCw, Edit2, Sparkles, Trash2, ChevronUp, ChevronDown, RotateCcw,
-  FileText, Image, FileIcon, AtSign, Search
+  FileText, Image, FileIcon, AtSign, Search, Plus, Clock
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import geminiService from '../services/geminiService';
+
 
 
 function AIChatPanel({ 
@@ -22,7 +23,11 @@ function AIChatPanel({
   onSendEditedMessage,
   editMode,
   uploadedFiles = [], // Yüklenen dosyalar listesi
-  openTabs = [] // Açık sekmeler listesi
+  openTabs = [], // Açık sekmeler listesi
+  chatTitle = '', // Sohbet başlığı
+  onChatTitleChange = () => {}, // Sohbet başlığı değişiklik handler'ı
+  chatHistory = [], // Geçmiş sohbetler
+  onLoadChatFromHistory = () => {} // Geçmiş sohbet yükleme handler'ı
 }) {
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -38,9 +43,11 @@ function AIChatPanel({
   const [tabSearchQuery, setTabSearchQuery] = useState(''); // Sekme arama sorgusu
   const [tabSearchIndex, setTabSearchIndex] = useState(-1); // Sekme arama indeksi
   const [textareaRows, setTextareaRows] = useState(2); // Textarea satır sayısı
+  const [showChatHistory, setShowChatHistory] = useState(false); // Geçmiş sohbet dropdown'ı
   const scrollAreaRef = useRef(null);
   const inputRef = useRef(null);
   const fileSearchRef = useRef(null);
+  const chatHistoryRef = useRef(null);
 
   // Auto-scroll to bottom when new messages or streaming content appears
   useEffect(() => {
@@ -56,6 +63,23 @@ function AIChatPanel({
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (chatHistoryRef.current && !chatHistoryRef.current.contains(event.target)) {
+        setShowChatHistory(false);
+      }
+    };
+
+    if (showChatHistory) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showChatHistory]);
 
   // Update input value when entering edit mode
   useEffect(() => {
@@ -266,8 +290,8 @@ function AIChatPanel({
       if (editMode && onSendEditedMessage) {
         await onSendEditedMessage(userMessage, selectedAttachments);
       } else {
-        // Normal message sending with attachments
-        await onSendMessage(userMessage, selectedAttachments);
+              // Normal mesaj gönderimi
+      await onSendMessage(userMessage, selectedAttachments);
       }
       
       // Clear attachments after sending
@@ -565,23 +589,88 @@ function AIChatPanel({
     <div className="h-full flex flex-col bg-gray-50 dark:bg-gray-900 border-l border-gray-200 dark:border-gray-700">
       {/* Header */}
       <div className="h-14 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-4">
-        <div className="flex items-center space-x-2">
-          <Sparkles className="w-5 h-5 text-purple-600" />
-          <span className="font-semibold text-gray-900 dark:text-gray-100 text-sm">LawInAI</span>
-          <Badge variant="secondary" className="text-xs">Pro</Badge>
+        <div className="flex flex-col justify-center min-w-0">
+          <div className="flex items-center space-x-2">
+            <Sparkles className="w-5 h-5 text-purple-600" />
+            <span className="font-semibold text-gray-900 dark:text-gray-100 text-sm">LawInAI</span>
+            <Badge variant="secondary" className="text-xs">Pro</Badge>
+          </div>
           
-          {/* Edit Mode Indicator */}
-          {editMode && (
-            <div className="flex items-center space-x-2 ml-4">
-              <div className="w-2 h-2 bg-orange-500 rounded-full animate-pulse"></div>
-              <span className="text-xs text-orange-600 dark:text-orange-400 font-medium">
-                Düzenleme Modu
+          {/* Chat Title - Second line */}
+          {chatTitle && (
+            <div className="mt-0.5">
+              <span className="text-xs text-gray-500 dark:text-gray-400 font-medium truncate max-w-48" title={chatTitle}>
+                {chatTitle}
               </span>
             </div>
           )}
         </div>
         
         <div className="flex items-center space-x-2">
+
+
+          {/* Edit Mode Indicator */}
+          {editMode && (
+            <div className="flex items-center space-x-2 mr-2">
+              <div className="w-2 h-2 bg-orange-500 rounded-full animate-pulse"></div>
+              <span className="text-xs text-orange-600 dark:text-orange-400 font-medium">
+                Düzenleme Modu
+              </span>
+            </div>
+          )}
+
+          {/* New Chat Button */}
+          <Button 
+            variant="ghost" 
+            size="sm"
+            onClick={() => onClearChat && onClearChat()}
+            className="h-8 w-8 p-0 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+            title="Yeni Sohbet"
+          >
+            <Plus className="w-4 h-4" />
+          </Button>
+
+          {/* Chat History Button */}
+          <div className="relative" ref={chatHistoryRef}>
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={() => setShowChatHistory(!showChatHistory)}
+              className="h-8 w-8 p-0 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              title="Sohbet Geçmişi"
+            >
+              <Clock className="w-4 h-4" />
+            </Button>
+
+            {/* Chat History Dropdown */}
+            {showChatHistory && chatHistory.length > 0 && (
+              <div className="absolute right-0 top-full mt-1 w-64 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50 max-h-64 overflow-y-auto">
+                <div className="p-2">
+                  <div className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2 px-2">
+                    Geçmiş Sohbetler
+                  </div>
+                  {chatHistory.map((chat) => (
+                    <button
+                      key={chat.id}
+                      onClick={() => {
+                        onLoadChatFromHistory(chat);
+                        setShowChatHistory(false);
+                      }}
+                      className="w-full px-3 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md flex flex-col"
+                    >
+                      <div className="font-medium truncate">{chat.title}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
+                        {new Date(chat.timestamp).toLocaleDateString('tr-TR')} - {chat.messages.length} mesaj
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+
+          
           {/* Exit Edit Mode Button */}
           {editMode && (
             <Button 
@@ -600,6 +689,7 @@ function AIChatPanel({
             size="sm"
             onClick={onClearChat}
             className="h-8 w-8 p-0 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+            title="Sohbeti Temizle"
           >
             <Trash2 className="w-4 h-4" />
           </Button>

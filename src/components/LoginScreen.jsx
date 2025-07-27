@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Scale, FolderOpen, Settings, Clock, Sparkles, ChevronRight, Sun, Moon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-function LoginScreen({ onOpenProject, onOpenSettings, onContinue, darkMode, onToggleTheme }) {
+function LoginScreen({ onOpenProject, onOpenSettings, onContinue, darkMode, onToggleTheme, onOpenTraining }) {
   const [showRecentProjects, setShowRecentProjects] = useState(false);
   const dropdownRef = useRef(null);
   const [recentProjects] = useState([
@@ -59,6 +59,14 @@ function LoginScreen({ onOpenProject, onOpenSettings, onContinue, darkMode, onTo
       title: 'Ayarlar',
       description: 'Uygulama ayarlarını görüntüleyin',
       onClick: onOpenSettings,
+      primary: false
+    },
+    {
+      id: 'training',
+      icon: Sparkles,
+      title: 'AI Eğitim Paneli',
+      description: 'Yapay zeka modelini eğitmek için veri yönetimi',
+      onClick: onOpenTraining,
       primary: false
     }
   ];

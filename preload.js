@@ -13,6 +13,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     get: (key) => ipcRenderer.invoke('store:get', key)
   },
   
+  // Eğitim verileri işlemleri
+  training: {
+    save: (data) => ipcRenderer.invoke('training:save', data),
+    load: () => ipcRenderer.invoke('training:load'),
+    clear: () => ipcRenderer.invoke('training:clear'),
+    stats: () => ipcRenderer.invoke('training:stats')
+  },
+  
   // Uygulama bilgileri
   app: {
     getVersion: () => ipcRenderer.invoke('app:getVersion')

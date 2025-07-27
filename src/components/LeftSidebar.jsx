@@ -353,7 +353,7 @@ function LeftSidebar({
 
       {/* Files Section */}
       <div className="flex-1 flex flex-col">
-        <div className="px-4 mb-4">
+        <div className="px-4 mb-4 mt-8">
           <Button
             onClick={onFileUpload}
             variant="default"

@@ -1,5 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import udfService from './udfService';
+import ragService from './ragService';
+import aiTrainingService from './aiTrainingService';
 
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 const MODEL_NAME = import.meta.env.VITE_GEMINI_MODEL || 'gemini-2.0-flash';
@@ -175,22 +177,68 @@ class GeminiService {
   }
 
   // Mesaj gönder (dosya desteği ile)
-  async sendMessage(message, attachments = []) {
+  async sendMessage(message, attachments = [], useRAG = true) {
     try {
       if (!this.isInitialized) {
         await this.startChat();
       }
 
+      // EĞİTİM VERİLERİNİ ENTEGRE ET
+      const trainingData = aiTrainingService.trainingData;
+      let enhancedMessage = message;
+      
+      if (trainingData && trainingData.length > 0) {
+        console.log(`Eğitim verileri entegre ediliyor: ${trainingData.length} parça`);
+        
+        // En alakalı 3 eğitim parçasını seç (basit benzerlik kontrolü)
+        const relevantChunks = trainingData
+          .filter(chunk => {
+            const messageWords = message.toLowerCase().split(' ');
+            const chunkWords = chunk.content.toLowerCase().split(' ');
+            const commonWords = messageWords.filter(word => 
+              chunkWords.some(chunkWord => chunkWord.includes(word) || word.includes(chunkWord))
+            );
+            return commonWords.length > 0;
+          })
+          .slice(0, 3);
+        
+        if (relevantChunks.length > 0) {
+          const trainingContext = relevantChunks
+            .map((chunk, index) => `Eğitim Bilgisi ${index + 1} (${chunk.metadata.documentName}):\n${chunk.content}`)
+            .join('\n\n');
+          
+          enhancedMessage = `Aşağıdaki eğitim verilerini kullanarak yanıt ver. Bu bilgiler Türk hukuk sistemi ve mevzuatı hakkında güvenilir kaynaklardan alınmıştır:\n\n${trainingContext}\n\nKullanıcı Sorusu: ${message}\n\nLütfen eğitim verilerindeki bilgileri kullanarak detaylı ve doğru bir yanıt ver.`;
+          
+          console.log(`${relevantChunks.length} eğitim parçası entegre edildi`);
+        } else {
+          // Alakalı parça bulunamadıysa genel eğitim verilerini kullan
+          const generalChunks = trainingData.slice(0, 2);
+          const trainingContext = generalChunks
+            .map((chunk, index) => `Genel Eğitim Bilgisi ${index + 1} (${chunk.metadata.documentName}):\n${chunk.content}`)
+            .join('\n\n');
+          
+          enhancedMessage = `Aşağıdaki genel eğitim verilerini de göz önünde bulundurarak yanıt ver:\n\n${trainingContext}\n\nKullanıcı Sorusu: ${message}`;
+          
+          console.log(`${generalChunks.length} genel eğitim parçası entegre edildi`);
+        }
+      }
+
+      // RAG modu aktifse ve doküman varsa RAG kullan
+      if (useRAG && attachments && attachments.length > 0) {
+        console.log('RAG modu ile mesaj gönderiliyor...');
+        return await this.sendMessageWithRAG(enhancedMessage, attachments);
+      }
+
       const parts = [];
       
       // Metin mesajını ekle
-      if (message && message.trim()) {
+      if (enhancedMessage && enhancedMessage.trim()) {
         // Dilekçe önerisi için özel prompt ekle
         const isDocumentRequest = this.isDocumentGenerationRequest(message);
-        let finalMessage = message;
+        let finalMessage = enhancedMessage;
         
         if (isDocumentRequest) {
-          finalMessage = `${message}\n\nLütfen yanıtınızı aşağıdaki formatta verin:\n\n1. Önce kısa bir açıklama yapın\n2. Sonra dilekçe metnini \`\`\`dilekce ve \`\`\` etiketleri arasında verin\n\nÖrnek format:\n\nSize yardımcı olmaktan memnuniyet duyarım. İşte hazırladığım dilekçe:\n\n\`\`\`dilekce\n[Burada dilekçe metnini yazın]\n\`\`\`\n\nNot: Dilekçe metni Türk hukuk sistemi standartlarına uygun olmalıdır.`;
+          finalMessage = `${enhancedMessage}\n\nLütfen yanıtınızı aşağıdaki formatta verin:\n\n1. Önce kısa bir açıklama yapın\n2. Sonra dilekçe metnini \`\`\`dilekce ve \`\`\` etiketleri arasında verin\n\nÖrnek format:\n\nSize yardımcı olmaktan memnuniyet duyarım. İşte hazırladığım dilekçe:\n\n\`\`\`dilekce\n[Burada dilekçe metnini yazın]\n\`\`\`\n\nNot: Dilekçe metni Türk hukuk sistemi standartlarına uygun olmalıdır.`;
         }
         
         parts.push({
@@ -242,23 +290,157 @@ class GeminiService {
     }
   }
 
+  // RAG ile mesaj gönder
+  async sendMessageWithRAG(message, attachments = []) {
+    try {
+      console.log('RAG ile mesaj gönderiliyor...');
+      
+      // EĞİTİM VERİLERİNİ RAG YANITINA ENTEGRE ET
+      const trainingData = aiTrainingService.trainingData;
+      let enhancedRAGResponse = '';
+      
+      if (trainingData && trainingData.length > 0) {
+        console.log(`RAG için eğitim verileri entegre ediliyor: ${trainingData.length} parça`);
+        
+        // En alakalı 2 eğitim parçasını seç
+        const relevantChunks = trainingData
+          .filter(chunk => {
+            const messageWords = message.toLowerCase().split(' ');
+            const chunkWords = chunk.content.toLowerCase().split(' ');
+            const commonWords = messageWords.filter(word => 
+              chunkWords.some(chunkWord => chunkWord.includes(word) || word.includes(chunkWord))
+            );
+            return commonWords.length > 0;
+          })
+          .slice(0, 2);
+        
+        if (relevantChunks.length > 0) {
+          const trainingContext = relevantChunks
+            .map((chunk, index) => `Ek Eğitim Bilgisi ${index + 1} (${chunk.metadata.documentName}):\n${chunk.content}`)
+            .join('\n\n');
+          
+          enhancedRAGResponse = `\n\nEk Eğitim Verileri:\n${trainingContext}\n\nBu ek bilgileri de göz önünde bulundurarak yanıtınızı genişletin.`;
+          
+          console.log(`RAG için ${relevantChunks.length} eğitim parçası entegre edildi`);
+        }
+      }
+      
+      // Önce dosyaları RAG sistemine ekle
+      if (attachments && attachments.length > 0) {
+        for (const file of attachments) {
+          if (this.isSupportedFileType(file.type)) {
+            try {
+              const fileContent = await this.fileToGenerativePart(file);
+              const document = {
+                id: file.id || Date.now() + Math.random(),
+                name: file.name,
+                content: fileContent.text || fileContent.inlineData?.data,
+                type: file.type
+              };
+              
+              await ragService.addDocument(document);
+              console.log(`Dosya RAG sistemine eklendi: ${file.name}`);
+            } catch (error) {
+              console.error(`RAG dosya ekleme hatası: ${file.name}`, error);
+            }
+          }
+        }
+      }
+
+      // RAG ile yanıt oluştur
+      const ragResponse = await ragService.queryRAG(message);
+      
+      // Eğitim verilerini RAG yanıtına ekle
+      const finalResponse = ragResponse.response + enhancedRAGResponse;
+      
+      // RAG yanıtını chat'e gönder (opsiyonel - geçmiş için)
+      if (!this.chat) {
+        await this.startChat();
+      }
+      
+      const result = await this.chat.sendMessage({
+        text: `Kullanıcı sorusu: ${message}\n\nRAG yanıtı: ${finalResponse}`
+      });
+      
+      const response = await result.response;
+      
+      return {
+        text: finalResponse,
+        usageMetadata: response.usageMetadata,
+        ragContext: ragResponse.relevantDocuments,
+        contextUsed: ragResponse.contextUsed,
+        documentsUsed: ragResponse.documentsUsed,
+        trainingDataUsed: enhancedRAGResponse ? true : false
+      };
+    } catch (error) {
+      console.error('RAG message error:', error);
+      throw new Error(`RAG mesaj hatası: ${error.message}`);
+    }
+  }
+
   // Streaming mesaj gönder
-  async sendMessageStream(message, attachments = [], onChunk) {
+  async sendMessageStream(message, attachments = [], onChunk, useRAG = true) {
     try {
       if (!this.isInitialized) {
         await this.startChat();
       }
 
+      // EĞİTİM VERİLERİNİ ENTEGRE ET (Streaming için)
+      const trainingData = aiTrainingService.trainingData;
+      let enhancedMessage = message;
+      
+      if (trainingData && trainingData.length > 0) {
+        console.log(`Streaming için eğitim verileri entegre ediliyor: ${trainingData.length} parça`);
+        
+        // En alakalı 3 eğitim parçasını seç (basit benzerlik kontrolü)
+        const relevantChunks = trainingData
+          .filter(chunk => {
+            const messageWords = message.toLowerCase().split(' ');
+            const chunkWords = chunk.content.toLowerCase().split(' ');
+            const commonWords = messageWords.filter(word => 
+              chunkWords.some(chunkWord => chunkWord.includes(word) || word.includes(chunkWord))
+            );
+            return commonWords.length > 0;
+          })
+          .slice(0, 3);
+        
+        if (relevantChunks.length > 0) {
+          const trainingContext = relevantChunks
+            .map((chunk, index) => `Eğitim Bilgisi ${index + 1} (${chunk.metadata.documentName}):\n${chunk.content}`)
+            .join('\n\n');
+          
+          enhancedMessage = `Aşağıdaki eğitim verilerini kullanarak yanıt ver. Bu bilgiler Türk hukuk sistemi ve mevzuatı hakkında güvenilir kaynaklardan alınmıştır:\n\n${trainingContext}\n\nKullanıcı Sorusu: ${message}\n\nLütfen eğitim verilerindeki bilgileri kullanarak detaylı ve doğru bir yanıt ver.`;
+          
+          console.log(`Streaming için ${relevantChunks.length} eğitim parçası entegre edildi`);
+        } else {
+          // Alakalı parça bulunamadıysa genel eğitim verilerini kullan
+          const generalChunks = trainingData.slice(0, 2);
+          const trainingContext = generalChunks
+            .map((chunk, index) => `Genel Eğitim Bilgisi ${index + 1} (${chunk.metadata.documentName}):\n${chunk.content}`)
+            .join('\n\n');
+          
+          enhancedMessage = `Aşağıdaki genel eğitim verilerini de göz önünde bulundurarak yanıt ver:\n\n${trainingContext}\n\nKullanıcı Sorusu: ${message}`;
+          
+          console.log(`Streaming için ${generalChunks.length} genel eğitim parçası entegre edildi`);
+        }
+      }
+
+      // RAG modu aktifse ve doküman varsa RAG kullan
+      if (useRAG && attachments && attachments.length > 0) {
+        console.log('RAG streaming modu ile mesaj gönderiliyor...');
+        return await this.sendMessageStreamWithRAG(enhancedMessage, attachments, onChunk);
+      }
+
       const parts = [];
       
       // Metin mesajını ekle
-      if (message && message.trim()) {
+      if (enhancedMessage && enhancedMessage.trim()) {
         // Dilekçe önerisi için özel prompt ekle
         const isDocumentRequest = this.isDocumentGenerationRequest(message);
-        let finalMessage = message;
+        let finalMessage = enhancedMessage;
         
         if (isDocumentRequest) {
-          finalMessage = `${message}\n\nLütfen yanıtınızı aşağıdaki formatta verin:\n\n1. Önce kısa bir açıklama yapın\n2. Sonra dilekçe metnini \`\`\`dilekce ve \`\`\` etiketleri arasında verin\n\nÖrnek format:\n\nSize yardımcı olmaktan memnuniyet duyarım. İşte hazırladığım dilekçe:\n\n\`\`\`dilekce\n[Burada dilekçe metnini yazın]\n\`\`\`\n\nNot: Dilekçe metni Türk hukuk sistemi standartlarına uygun olmalıdır.`;
+          finalMessage = `${enhancedMessage}\n\nLütfen yanıtınızı aşağıdaki formatta verin:\n\n1. Önce kısa bir açıklama yapın\n2. Sonra dilekçe metnini \`\`\`dilekce ve \`\`\` etiketleri arasında verin\n\nÖrnek format:\n\nSize yardımcı olmaktan memnuniyet duyarım. İşte hazırladığım dilekçe:\n\n\`\`\`dilekce\n[Burada dilekçe metnini yazın]\n\`\`\`\n\nNot: Dilekçe metni Türk hukuk sistemi standartlarına uygun olmalıdır.`;
         }
         
         parts.push({
@@ -314,6 +496,96 @@ class GeminiService {
       } else {
         throw new Error(`Mesaj gönderilemedi: ${error.message}`);
       }
+    }
+  }
+
+  // RAG ile streaming mesaj gönder
+  async sendMessageStreamWithRAG(message, attachments = [], onChunk) {
+    try {
+      console.log('RAG streaming ile mesaj gönderiliyor...');
+      
+      // EĞİTİM VERİLERİNİ RAG STREAMING YANITINA ENTEGRE ET
+      const trainingData = aiTrainingService.trainingData;
+      let enhancedRAGResponse = '';
+      
+      if (trainingData && trainingData.length > 0) {
+        console.log(`RAG streaming için eğitim verileri entegre ediliyor: ${trainingData.length} parça`);
+        
+        // En alakalı 2 eğitim parçasını seç
+        const relevantChunks = trainingData
+          .filter(chunk => {
+            const messageWords = message.toLowerCase().split(' ');
+            const chunkWords = chunk.content.toLowerCase().split(' ');
+            const commonWords = messageWords.filter(word => 
+              chunkWords.some(chunkWord => chunkWord.includes(word) || word.includes(chunkWord))
+            );
+            return commonWords.length > 0;
+          })
+          .slice(0, 2);
+        
+        if (relevantChunks.length > 0) {
+          const trainingContext = relevantChunks
+            .map((chunk, index) => `Ek Eğitim Bilgisi ${index + 1} (${chunk.metadata.documentName}):\n${chunk.content}`)
+            .join('\n\n');
+          
+          enhancedRAGResponse = `\n\nEk Eğitim Verileri:\n${trainingContext}\n\nBu ek bilgileri de göz önünde bulundurarak yanıtınızı genişletin.`;
+          
+          console.log(`RAG streaming için ${relevantChunks.length} eğitim parçası entegre edildi`);
+        }
+      }
+      
+      // Önce dosyaları RAG sistemine ekle
+      if (attachments && attachments.length > 0) {
+        for (const file of attachments) {
+          if (this.isSupportedFileType(file.type)) {
+            try {
+              const fileContent = await this.fileToGenerativePart(file);
+              const document = {
+                id: file.id || Date.now() + Math.random(),
+                name: file.name,
+                content: fileContent.text || fileContent.inlineData?.data,
+                type: file.type
+              };
+              
+              await ragService.addDocument(document);
+              console.log(`Dosya RAG sistemine eklendi: ${file.name}`);
+            } catch (error) {
+              console.error(`RAG dosya ekleme hatası: ${file.name}`, error);
+            }
+          }
+        }
+      }
+
+      // RAG ile yanıt oluştur
+      const ragResponse = await ragService.queryRAG(message);
+      
+      // Eğitim verilerini RAG yanıtına ekle
+      const finalResponseText = ragResponse.response + enhancedRAGResponse;
+      
+      // RAG yanıtını streaming olarak gönder
+      let currentText = '';
+      
+      // Karakter karakter streaming simülasyonu
+      for (let i = 0; i < finalResponseText.length; i++) {
+        currentText += finalResponseText[i];
+        if (onChunk) {
+          onChunk(finalResponseText[i], currentText);
+        }
+        // Küçük gecikme ile streaming efekti
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      
+      return {
+        text: finalResponseText,
+        usageMetadata: { promptTokenCount: 0, candidatesTokenCount: 0, totalTokenCount: 0 },
+        ragContext: ragResponse.relevantDocuments,
+        contextUsed: ragResponse.contextUsed,
+        documentsUsed: ragResponse.documentsUsed,
+        trainingDataUsed: enhancedRAGResponse ? true : false
+      };
+    } catch (error) {
+      console.error('RAG streaming error:', error);
+      throw new Error(`RAG streaming hatası: ${error.message}`);
     }
   }
 

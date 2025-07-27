@@ -1,9 +1,94 @@
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
+const fs = require('fs').promises;
 const Store = require('electron-store');
 
 // Güvenli storage için
 const store = new Store();
+
+// Veri yönetimi sınıfı
+class DataManager {
+  constructor() {
+    this.dataPath = path.join(app.getPath('userData'), 'lawinai');
+    this.trainingDataFile = path.join(this.dataPath, 'training-data.json');
+    this.embeddingsFile = path.join(this.dataPath, 'embeddings.json');
+    this.ensureDataDirectory();
+  }
+
+  async ensureDataDirectory() {
+    try {
+      await fs.mkdir(this.dataPath, { recursive: true });
+      console.log('Veri dizini hazırlandı:', this.dataPath);
+    } catch (error) {
+      console.error('Veri dizini oluşturulamadı:', error);
+    }
+  }
+
+  async saveTrainingData(data) {
+    try {
+      const trainingData = {
+        trainingData: data.trainingData || [],
+        embeddings: data.embeddings || [],
+        lastUpdated: new Date().toISOString(),
+        version: '1.0'
+      };
+
+      await fs.writeFile(this.trainingDataFile, JSON.stringify(trainingData, null, 2));
+      console.log('Eğitim verileri kaydedildi:', trainingData.trainingData.length, 'parça');
+      return { success: true, count: trainingData.trainingData.length };
+    } catch (error) {
+      console.error('Eğitim verileri kaydetme hatası:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  async loadTrainingData() {
+    try {
+      const data = await fs.readFile(this.trainingDataFile, 'utf8');
+      const parsedData = JSON.parse(data);
+      console.log('Eğitim verileri yüklendi:', parsedData.trainingData?.length || 0, 'parça');
+      return { success: true, data: parsedData };
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        console.log('Eğitim veri dosyası bulunamadı, yeni başlatılıyor');
+        return { success: true, data: { trainingData: [], embeddings: [], lastUpdated: null } };
+      }
+      console.error('Eğitim verileri yükleme hatası:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  async clearTrainingData() {
+    try {
+      await fs.unlink(this.trainingDataFile);
+      console.log('Eğitim verileri temizlendi');
+      return { success: true };
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        return { success: true }; // Dosya zaten yok
+      }
+      console.error('Eğitim verileri temizleme hatası:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  async getDataStats() {
+    try {
+      const stats = await fs.stat(this.trainingDataFile);
+      return {
+        exists: true,
+        size: stats.size,
+        lastModified: stats.mtime,
+        path: this.trainingDataFile
+      };
+    } catch (error) {
+      return { exists: false, error: error.message };
+    }
+  }
+}
+
+// Veri yöneticisi örneği
+const dataManager = new DataManager();
 
 // Development mode kontrolü
 const isDev = process.env.NODE_ENV === 'development';
@@ -190,6 +275,26 @@ ipcMain.handle('store:set', async (event, key, value) => {
 // Ayarları al
 ipcMain.handle('store:get', async (event, key) => {
   return store.get(key);
+});
+
+// Eğitim verileri IPC handlers
+ipcMain.handle('training:save', async (event, data) => {
+  console.log('Eğitim verileri kaydediliyor...');
+  return await dataManager.saveTrainingData(data);
+});
+
+ipcMain.handle('training:load', async () => {
+  console.log('Eğitim verileri yükleniyor...');
+  return await dataManager.loadTrainingData();
+});
+
+ipcMain.handle('training:clear', async () => {
+  console.log('Eğitim verileri temizleniyor...');
+  return await dataManager.clearTrainingData();
+});
+
+ipcMain.handle('training:stats', async () => {
+  return await dataManager.getDataStats();
 });
 
 // Uygulama versiyonu

@@ -144,7 +144,7 @@ function createWindow() {
     mainWindow.webContents.openDevTools();
   } else {
     // Production modunda build dosyalarını yükle
-    const indexPath = path.join(__dirname, '../dist/index.html');
+    const indexPath = path.join(__dirname, 'dist/index.html');
     console.log('Loading file:', indexPath);
     mainWindow.loadFile(indexPath);
   }

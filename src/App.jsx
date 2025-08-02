@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { FileText, MessageSquare, Settings, Upload, Bot, Scale } from 'lucide-react';
 import HeaderBar from './components/HeaderBar';
 import LeftSidebar from './components/LeftSidebar';
@@ -11,6 +11,7 @@ import SettingsPanel from './components/SettingsPanel';
 import geminiService from './services/geminiService';
 import udfService from './services/udfService';
 import ragService from './services/ragService';
+import textFormattingService from './services/textFormattingService';
 import DiffMatchPatch from 'diff-match-patch';
 import {
   ResizablePanelGroup,
@@ -73,6 +74,11 @@ function App() {
   const [pendingContent, setPendingContent] = useState(''); // Content waiting for approval (green in editor)
   const [streamingToEditor, setStreamingToEditor] = useState(false); // Is currently writing to editor
 
+  // New AI Text State Management - Enhanced diff system
+  const [aiTextState, setAiTextState] = useState(null); // 'pending', 'changes', null
+  const [originalText, setOriginalText] = useState(''); // Değişiklik öncesi metin
+  const [pendingChanges, setPendingChanges] = useState([]); // AI'ın önerdiği değişiklikler
+
   // Tab Management State
   const [openTabs, setOpenTabs] = useState([
     {
@@ -88,14 +94,17 @@ function App() {
   ]);
   const [activeTabId, setActiveTabId] = useState('doc-main');
 
-  // Force refresh highlights every second to remove expired ones
+  // Optimized highlight refresh - only when needed
   useEffect(() => {
     const timer = setInterval(() => {
-      setHighlightRefresh(prev => prev + 1);
-    }, 1000);
+      // Only refresh if there are active changes
+      if (currentDocument.aiChanges && currentDocument.aiChanges.length > 0) {
+        setHighlightRefresh(prev => prev + 1);
+      }
+    }, 5000); // Reduced frequency to 5 seconds
     
     return () => clearInterval(timer);
-  }, []);
+  }, [currentDocument.aiChanges]);
 
   // App initialization
   useEffect(() => {
@@ -659,37 +668,91 @@ function App() {
       };
       
       const onComplete = (response) => {
+        console.log('🚀 AI Response Complete - DEBUG START');
+        
         // Extract document content if present
         const docMatch = response.content.match(/```dilekce\n([\s\S]*?)(?:\n```|$)/);
         if (docMatch) {
           const documentContent = docMatch[1];
           
-          // Calculate diff between current content and new content
-          const oldContent = currentDocument.content;
-          const diffChanges = calculateTextDiff(oldContent, documentContent);
+          console.log('📝 Document content found:', documentContent.substring(0, 100) + '...');
           
-          // Update document with new content and AI changes for highlighting
-          const updatedDocument = {
-            ...currentDocument,
-            content: documentContent, // Set new content immediately
-            aiChanges: diffChanges, // Set changes for highlighting
-            hasChanges: true
-          };
+          // Format the AI content for proper HTML structure
+          const formattedContent = textFormattingService.formatForTipTap(documentContent);
           
-          // Update both currentDocument and the active tab
-          setCurrentDocument(updatedDocument);
+          // Determine AI text state based on content
+          const currentContent = currentDocument.content;
           
-          // Update the active tab's content
-          setOpenTabs(prev => prev.map(tab => 
-            tab.id === activeTabId 
-              ? { ...tab, data: { ...tab.data, content: documentContent, aiChanges: diffChanges, hasChanges: true } }
-              : tab
-          ));
+          console.log('🔍 Current content:', currentContent ? currentContent.substring(0, 100) + '...' : 'EMPTY');
+          console.log('🆕 New content:', formattedContent.substring(0, 100) + '...');
           
-          // Clear pending content since we've applied changes
+          if (!currentContent || currentContent.trim() === '') {
+            // İlk kez metin yazılıyor - pending state
+            console.log('✨ Setting AI state to PENDING');
+            setAiTextState('pending');
+            setOriginalText('');
+            setPendingContent(formattedContent); // Raw content for approval/reject
+            setPendingChanges([]);
+            
+            // Document'ı diff marker'larıyla güncelle
+            const pendingMarkedContent = textFormattingService.markTextAsPending(formattedContent);
+            console.log('🔵 Pending marked content:', pendingMarkedContent.substring(0, 100) + '...');
+            
+            setCurrentDocument(prev => ({
+              ...prev,
+              content: pendingMarkedContent, // Content with diff markers
+              hasChanges: true
+            }));
+            
+            // Update the active tab with diff markers
+            setOpenTabs(prev => prev.map(tab => 
+              tab.id === activeTabId 
+                ? { ...tab, data: { ...tab.data, content: pendingMarkedContent, hasChanges: true } }
+                : tab
+            ));
+            
+          } else {
+            // Mevcut metin değiştiriliyor - changes state
+            console.log('🔄 Setting AI state to CHANGES');
+            setAiTextState('changes');
+            setOriginalText(currentContent);
+            
+            // Yeni diff sistemi ile değişiklikleri hesapla
+            const changeId = textFormattingService.addPendingChange(
+              currentContent, 
+              formattedContent, 
+              'replace'
+            );
+            
+            const pendingChange = textFormattingService.getPendingChange(changeId);
+            if (pendingChange) {
+              console.log('📊 Pending changes:', pendingChange.changes);
+              setPendingChanges(pendingChange.changes);
+              
+              // Document'ı diff highlight'larıyla güncelle
+              const diffResult = textFormattingService.getPendingTextWithHighlights(currentContent, formattedContent);
+              console.log('🔄 Diff highlighted content:', diffResult.highlightedText.substring(0, 100) + '...');
+              
+              setCurrentDocument(prev => ({
+                ...prev,
+                content: diffResult.highlightedText, // Content with diff markers
+                hasChanges: true
+              }));
+              
+              // Update the active tab
+              setOpenTabs(prev => prev.map(tab => 
+                tab.id === activeTabId 
+                  ? { ...tab, data: { ...tab.data, content: diffResult.highlightedText, hasChanges: true } }
+                  : tab
+              ));
+            }
+          }
+          
+          // Clear old pending content
           setPendingContent('');
         }
         
+        console.log('🏁 AI Response Complete - DEBUG END');
         // Add final AI message to chat
         const aiMessage = {
           id: Date.now() + 1,
@@ -794,6 +857,14 @@ function App() {
     setApprovedChanges(new Set());
     setRejectedChanges(new Set());
     
+    // Clear new AI text state
+    setAiTextState(null);
+    setOriginalText('');
+    setPendingChanges([]);
+    
+    // Clear textFormattingService state
+    textFormattingService.clearAllPendingChanges();
+    
     // Clear Gemini chat history
     geminiService.clearChat();
   };
@@ -870,18 +941,162 @@ function App() {
     setCheckpoints(prev => [...prev, checkpoint]);
   };
 
-  // Handle approving a change
-  const handleApproveChange = (changeId) => {
-    setApprovedChanges(prev => new Set([...prev, changeId]));
-    setRejectedChanges(prev => {
-      const newSet = new Set(prev);
-      newSet.delete(changeId); // Remove from rejected if exists
-      return newSet;
-    });
+  // Handle approving pending content (ilk kez yazılan metin)
+  const handleApprovePendingContent = () => {
+    try {
+      // Pending content'i onayla ve normal duruma getir
+      const cleanContent = textFormattingService.clearDiffHighlights(currentDocument.content);
+      
+      setCurrentDocument(prev => ({
+        ...prev,
+        content: cleanContent,
+        hasChanges: true
+      }));
+      
+      // Update active tab
+      setOpenTabs(prev => prev.map(tab => 
+        tab.id === activeTabId 
+          ? { ...tab, data: { ...tab.data, content: cleanContent, hasChanges: true } }
+          : tab
+      ));
+      
+      // Reset AI text state
+      setAiTextState(null);
+      setOriginalText('');
+      setPendingContent('');
+      setPendingChanges([]);
+      
+      console.log('AI tarafından oluşturulan metin onaylandı');
+    } catch (error) {
+      console.error('Pending content onaylanırken hata:', error);
+    }
   };
 
-  // Handle rejecting a change
+  // Handle rejecting pending content (ilk kez yazılan metin)
+  const handleRejectPendingContent = () => {
+    try {
+      // Content'i temizle veya eski haline getir
+      const restoredContent = originalText || '';
+      
+      setCurrentDocument(prev => ({
+        ...prev,
+        content: restoredContent,
+        hasChanges: false
+      }));
+      
+      // Update active tab
+      setOpenTabs(prev => prev.map(tab => 
+        tab.id === activeTabId 
+          ? { ...tab, data: { ...tab.data, content: restoredContent, hasChanges: false } }
+          : tab
+      ));
+      
+      // Reset AI text state
+      setAiTextState(null);
+      setOriginalText('');
+      setPendingContent('');
+      setPendingChanges([]);
+      
+      console.log('AI tarafından oluşturulan metin reddedildi');
+    } catch (error) {
+      console.error('Pending content reddedilirken hata:', error);
+    }
+  };
+
+  // Handle approving all changes (metin değişiklikleri)
+  const handleApproveAllChanges = () => {
+    try {
+      // Tüm pending değişiklikleri onayla
+      const currentPendingChanges = textFormattingService.getPendingChanges();
+      currentPendingChanges.forEach(change => {
+        textFormattingService.approveChange(change.id);
+      });
+
+      // Diff highlight'ları temizle
+      const cleanContent = textFormattingService.clearDiffHighlights(currentDocument.content);
+      
+      setCurrentDocument(prev => ({
+        ...prev,
+        content: cleanContent,
+        hasChanges: true
+      }));
+      
+      // Update active tab
+      setOpenTabs(prev => prev.map(tab => 
+        tab.id === activeTabId 
+          ? { ...tab, data: { ...tab.data, content: cleanContent, hasChanges: true } }
+          : tab
+      ));
+
+      // Reset AI text state
+      setAiTextState(null);
+      setOriginalText('');
+      setPendingChanges([]);
+      
+      console.log('AI değişiklikleri onaylandı');
+    } catch (error) {
+      console.error('Değişiklikleri onaylarken hata:', error);
+    }
+  };
+
+  // Handle rejecting all changes (metin değişiklikleri)
+  const handleRejectAllChanges = () => {
+    try {
+      // Tüm pending değişiklikleri reddet
+      const currentPendingChanges = textFormattingService.getPendingChanges();
+      currentPendingChanges.forEach(change => {
+        textFormattingService.rejectChange(change.id);
+      });
+
+      // Original text'e geri dön
+      if (originalText) {
+        setCurrentDocument(prev => ({
+          ...prev,
+          content: originalText,
+          hasChanges: false
+        }));
+        
+        // Update active tab
+        setOpenTabs(prev => prev.map(tab => 
+          tab.id === activeTabId 
+            ? { ...tab, data: { ...tab.data, content: originalText, hasChanges: false } }
+            : tab
+        ));
+      }
+
+      // Reset AI text state
+      setAiTextState(null);
+      setOriginalText('');
+      setPendingChanges([]);
+      
+      console.log('AI değişiklikleri reddedildi');
+    } catch (error) {
+      console.error('Değişiklikleri reddederken hata:', error);
+    }
+  };
+
+  // Handle approving a change (legacy - eski sistem ile uyumluluk)
+  const handleApproveChange = (changeId) => {
+    if (changeId === 'all') {
+      handleApproveAllChanges();
+    } else {
+      setApprovedChanges(prev => new Set([...prev, changeId]));
+      setRejectedChanges(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(changeId); // Remove from rejected if exists
+        return newSet;
+      });
+    }
+  };
+
+  // Handle rejecting a change (legacy ve yeni sistem için)
   const handleRejectChange = (changeId) => {
+    if (changeId === 'all') {
+      handleRejectAllChanges();
+      return;
+    }
+
+    // Eski sistem ile uyumluluk
     const changeToReject = currentDocument.aiChanges.find(change => change.id === changeId);
     if (!changeToReject) return;
     
@@ -1016,141 +1231,149 @@ function App() {
     };
   };
 
-  // Professional diff using Google's diff-match-patch algorithm
-  const calculateTextDiff = (oldText, newText) => {
+  // Optimized diff calculation with caching
+  const diffCache = useRef(new Map());
+  const calculateTextDiff = useCallback((oldText, newText) => {
     if (!oldText && !newText) return [];
+    
+    // Create cache key
+    const cacheKey = `${(oldText || '').length}_${(newText || '').length}_${(oldText || '').substring(0, 20)}_${(newText || '').substring(0, 20)}`;
+    if (diffCache.current.has(cacheKey)) {
+      return diffCache.current.get(cacheKey);
+    }
     
     const timestamp = new Date().toISOString();
     const changes = [];
     
-    // Handle edge cases
+    // Handle edge cases quickly
     if (!oldText && newText) {
-      changes.push({
+      const result = [{
         id: `add_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         type: 'addition',
         start: 0,
         end: newText.length,
         text: newText,
         timestamp
-      });
-      return changes;
+      }];
+      diffCache.current.set(cacheKey, result);
+      return result;
     }
     
     if (oldText && !newText) {
-      changes.push({
+      const result = [{
         id: `del_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         type: 'deletion',
         start: 0,
         end: 0,
         text: oldText,
         timestamp
-      });
-      return changes;
+      }];
+      diffCache.current.set(cacheKey, result);
+      return result;
     }
 
-    // Use Google's diff-match-patch for professional text diffing
-    const dmp = new DiffMatchPatch();
-    
-    // Calculate diffs
-    const diffs = dmp.diff_main(oldText, newText);
-    
-    // Clean up semantic diffs for better results
-    dmp.diff_cleanupSemantic(diffs);
-    
-    // Convert diffs to our format
-    let position = 0;
-    
-    diffs.forEach((diff, index) => {
-      const [operation, text] = diff;
+    // Skip diff calculation if texts are identical
+    if (oldText === newText) {
+      diffCache.current.set(cacheKey, []);
+      return [];
+    }
+
+    // Use simplified diff for performance
+    try {
+      const dmp = new DiffMatchPatch();
       
-      // Skip empty or whitespace-only changes
-      if (!text || text.trim().length === 0) {
-        if (operation === DiffMatchPatch.DIFF_EQUAL) {
-          position += text.length;
+      // Set timeout to prevent long calculations
+      dmp.Diff_Timeout = 0.5; // 500ms timeout
+      
+      // Calculate diffs with timeout
+      const diffs = dmp.diff_main(oldText, newText);
+      
+      // Simple cleanup without semantic analysis for performance
+      dmp.diff_cleanupEfficiency(diffs);
+      
+      // Convert diffs to our format (simplified)
+      let position = 0;
+      
+      diffs.forEach((diff, index) => {
+        const [operation, text] = diff;
+        
+        // Skip very small changes for performance
+        if (!text || text.length < 2) {
+          if (operation === DiffMatchPatch.DIFF_EQUAL) {
+            position += text.length;
+          }
+          return;
         }
-        return;
+        
+        switch (operation) {
+          case DiffMatchPatch.DIFF_DELETE:
+            changes.push({
+              id: `del_${Date.now()}_${index}`,
+              type: 'deletion',
+              start: position,
+              end: position,
+              text: text,
+              timestamp
+            });
+            break;
+            
+          case DiffMatchPatch.DIFF_INSERT:
+            changes.push({
+              id: `add_${Date.now()}_${index}`,
+              type: 'addition',
+              start: position,
+              end: position + text.length,
+              text: text,
+              timestamp
+            });
+            position += text.length;
+            break;
+            
+          case DiffMatchPatch.DIFF_EQUAL:
+            position += text.length;
+            break;
+        }
+      });
+      
+      // Cache the result
+      diffCache.current.set(cacheKey, changes);
+      
+      // Limit cache size
+      if (diffCache.current.size > 20) {
+        const firstKey = diffCache.current.keys().next().value;
+        diffCache.current.delete(firstKey);
       }
       
-      switch (operation) {
-        case DiffMatchPatch.DIFF_DELETE:
-          // Text was deleted
-          changes.push({
-            id: `del_${Date.now()}_${index}_${Math.random().toString(36).substr(2, 9)}`,
-            type: 'deletion',
-            start: position,
-            end: position,
-            text: text,
-            timestamp
-          });
-          // Don't advance position for deletions
-          break;
-          
-        case DiffMatchPatch.DIFF_INSERT:
-          // Text was added
-          changes.push({
-            id: `add_${Date.now()}_${index}_${Math.random().toString(36).substr(2, 9)}`,
-            type: 'addition',
-            start: position,
-            end: position + text.length,
-            text: text,
-            timestamp
-          });
-          position += text.length;
-          break;
-          
-        case DiffMatchPatch.DIFF_EQUAL:
-          // Text is the same, just advance position
-          position += text.length;
-          break;
-      }
-    });
-    
-    console.log('Diff-match-patch results:', {
-      oldText: oldText.substring(0, 50) + '...',
-      newText: newText.substring(0, 50) + '...',
-      diffs: diffs.slice(0, 5), // First 5 diffs for debugging
-      changes: changes.length
-    });
+    } catch (error) {
+      console.warn('Diff calculation error, using simple diff:', error);
+      // Fallback to simple diff
+      const result = [{
+        id: `add_${Date.now()}`,
+        type: 'addition',
+        start: 0,
+        end: newText.length,
+        text: newText,
+        timestamp
+      }];
+      diffCache.current.set(cacheKey, result);
+      return result;
+    }
     
     return changes;
-  };
+  }, []);
 
-  // Handle approving pending content
-  const handleApprovePendingContent = () => {
-    if (pendingContent) {
-      // Replace document content with pending content (not append)
-      const finalContent = pendingContent;
-      
-      const newDocumentState = {
-        ...currentDocument,
-        content: finalContent,
-        hasChanges: true
-      };
-      
-      setCurrentDocument(newDocumentState);
-      
-      // Clear pending states
-      setPendingContent('');
-      setStreamingToEditor(false);
-      
-      // Create checkpoint
-      createCheckpoint(chatMessages.length - 1, newDocumentState);
-    }
-  };
 
-  // Handle rejecting pending content
-  const handleRejectPendingContent = () => {
-    setPendingContent('');
-    setStreamingToEditor(false);
-  };
 
   // Handle accepting text suggestions with real diff tracking
   const handleAcceptTextSuggestion = (suggestionText, mode = 'replace') => {
     console.log('Accepting text suggestion:', suggestionText.substring(0, 100) + '...', 'Mode:', mode);
     
+    // Format the suggestion text for proper HTML structure
+    const formattedSuggestion = textFormattingService.formatForTipTap(suggestionText);
+    
     if (mode === 'replace') {
       // Use pending content if available, otherwise use suggestion text
-      const contentToAdd = pendingContent || suggestionText;
+      const contentToAdd = pendingContent || formattedSuggestion;
       
       // For replace mode, completely replace the document content
       let finalContent = contentToAdd;
@@ -1185,7 +1408,7 @@ function App() {
     } else if (mode === 'append') {
       // Append to existing content
       const separator = currentDocument.content ? '\n\n' : '';
-      const newContent = currentDocument.content + separator + suggestionText;
+      const newContent = currentDocument.content + separator + formattedSuggestion;
       
       const newDocumentState = {
         ...currentDocument,
@@ -1339,6 +1562,10 @@ function App() {
             onTabChange={handleTabChange}
             onTabClose={handleTabClose}
             onTabRename={handleTabRename}
+            // Yeni AI diff sistemi props'ları
+            aiTextState={aiTextState}
+            originalText={originalText}
+            pendingChanges={pendingChanges}
           />
         </ResizablePanel>
 

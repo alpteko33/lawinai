@@ -213,7 +213,6 @@
   transform: none !important;
 }
 
-
 @layer base {
   * {
     @apply border-border;
@@ -223,17 +222,32 @@
   }
 }
 
-/* TipTap Editor Styles */
+/* ======================================================================================== */
+/* TipTap Editor Base Styles */
+/* ======================================================================================== */
+
 .tiptap-editor .ProseMirror {
-  outline: none;
+  outline: none !important;
   min-height: 400px;
   font-family: 'Times New Roman', serif;
   font-size: 12pt;
   line-height: 1.5;
+  padding: 1rem;
+  background-color: transparent;
+  color: #111827;
+}
+
+.dark .tiptap-editor .ProseMirror {
+  color: #ffffff;
 }
 
 .tiptap-editor .ProseMirror p {
   margin: 0.5em 0;
+  color: #111827;
+}
+
+.dark .tiptap-editor .ProseMirror p {
+  color: #ffffff;
 }
 
 .tiptap-editor .ProseMirror h1, 
@@ -245,30 +259,16 @@
   margin: 1em 0 0.5em 0;
   font-weight: bold;
   line-height: 1.2;
+  color: #111827;
 }
 
-.tiptap-editor .ProseMirror h1 {
-  font-size: 2em;
-}
-
-.tiptap-editor .ProseMirror h2 {
-  font-size: 1.5em;
-}
-
-.tiptap-editor .ProseMirror h3 {
-  font-size: 1.17em;
-}
-
-.tiptap-editor .ProseMirror h4 {
-  font-size: 1em;
-}
-
-.tiptap-editor .ProseMirror h5 {
-  font-size: 0.83em;
-}
-
-.tiptap-editor .ProseMirror h6 {
-  font-size: 0.67em;
+.dark .tiptap-editor .ProseMirror h1, 
+.dark .tiptap-editor .ProseMirror h2, 
+.dark .tiptap-editor .ProseMirror h3, 
+.dark .tiptap-editor .ProseMirror h4, 
+.dark .tiptap-editor .ProseMirror h5, 
+.dark .tiptap-editor .ProseMirror h6 {
+  color: #ffffff;
 }
 
 /* Text Alignment */
@@ -288,217 +288,18 @@
   text-align: justify;
 }
 
-/* List Styles */
-.tiptap-editor .ProseMirror ul, 
-.tiptap-editor .ProseMirror ol {
-  padding-left: 1.5em;
-  margin: 0.5em 0;
+/* Highlight */
+.tiptap-editor .ProseMirror mark {
+  background-color: #fef08a;
+  color: #000;
 }
 
-.tiptap-editor .ProseMirror ul {
-  list-style-type: disc;
+.dark .tiptap-editor .ProseMirror mark {
+  background-color: #fbbf24;
+  color: #000;
 }
 
-.tiptap-editor .ProseMirror ol {
-  list-style-type: decimal;
-}
-
-.tiptap-editor .ProseMirror li {
-  margin: 0.25em 0;
-}
-
-.tiptap-editor .ProseMirror ul ul,
-.tiptap-editor .ProseMirror ol ol,
-.tiptap-editor .ProseMirror ul ol,
-.tiptap-editor .ProseMirror ol ul {
-  margin: 0.25em 0;
-}
-
-/* Table Styles */
-.tiptap-editor .ProseMirror table {
-  border-collapse: collapse;
-  margin: 1em 0;
-  width: 100%;
-  table-layout: fixed;
-}
-
-.tiptap-editor .ProseMirror th, 
-.tiptap-editor .ProseMirror td {
-  border: 1px solid #ddd;
-  padding: 0.75em;
-  text-align: left;
-  vertical-align: top;
-  min-width: 100px;
-}
-
-.tiptap-editor .ProseMirror th {
-  background-color: #f9f9f9;
-  font-weight: bold;
-  text-align: center;
-}
-
-.tiptap-editor .ProseMirror .tableWrapper {
-  overflow-x: auto;
-  margin: 1em 0;
-}
-
-.tiptap-editor .ProseMirror .selectedCell:after {
-  background: rgba(200, 200, 255, 0.4);
-  content: "";
-  left: 0; right: 0; top: 0; bottom: 0;
-  pointer-events: none;
-  position: absolute;
-  z-index: 2;
-}
-
-.tiptap-editor .ProseMirror .column-resize-handle {
-  background-color: #adf;
-  bottom: -2px;
-  position: absolute;
-  right: -2px;
-  pointer-events: none;
-  top: 0;
-  width: 4px;
-}
-
-.tiptap-editor .ProseMirror .tableWrapper {
-  padding: 1rem 0;
-  overflow-x: auto;
-}
-
-.tiptap-editor .ProseMirror table {
-  border-collapse: collapse;
-  table-layout: fixed;
-  width: 100%;
-  margin: 0;
-  overflow: hidden;
-}
-
-.tiptap-editor .ProseMirror td,
-.tiptap-editor .ProseMirror th {
-  border: 2px solid #ced4da;
-  box-sizing: border-box;
-  min-width: 1em;
-  padding: 3px 5px;
-  position: relative;
-  vertical-align: top;
-}
-
-.tiptap-editor .ProseMirror th {
-  background-color: #f1f3f4;
-  font-weight: bold;
-  text-align: left;
-}
-
-.tiptap-editor .ProseMirror .selectedCell:after {
-  background: rgba(200, 200, 255, 0.4);
-  content: "";
-  left: 0; right: 0; top: 0; bottom: 0;
-  pointer-events: none;
-  position: absolute;
-  z-index: 2;
-}
-
-.tiptap-editor .ProseMirror .column-resize-handle {
-  background-color: #adf;
-  bottom: -2px;
-  position: absolute;
-  right: -2px;
-  pointer-events: none;
-  top: 0;
-  width: 4px;
-}
-
-.tiptap-editor .ProseMirror p {
-  margin: 0;
-}
-
-.tiptap-editor .ProseMirror blockquote {
-  border-left: 3px solid #ddd;
-  margin: 0.5em 0;
-  padding-left: 1em;
-}
-
-.tiptap-editor .ProseMirror code {
-  background-color: #f1f1f1;
-  padding: 0.2em 0.4em;
-  border-radius: 3px;
-  font-family: monospace;
-}
-
-.tiptap-editor .ProseMirror pre {
-  background-color: #f1f1f1;
-  padding: 1em;
-  border-radius: 5px;
-  overflow-x: auto;
-}
-
-/* Dark mode support for TipTap */
-.dark .tiptap-editor .ProseMirror {
-  color: #e5e7eb;
-  background-color: transparent;
-}
-
-.dark .tiptap-editor .ProseMirror blockquote {
-  border-left-color: #4b5563;
-}
-
-.dark .tiptap-editor .ProseMirror code {
-  background-color: #374151;
-  color: #e5e7eb;
-}
-
-.dark .tiptap-editor .ProseMirror pre {
-  background-color: #374151;
-  color: #e5e7eb;
-}
-
-.dark .tiptap-editor .ProseMirror th, 
-.dark .tiptap-editor .ProseMirror td {
-  border-color: #4b5563;
-}
-
-.dark .tiptap-editor .ProseMirror th {
-  background-color: #4b5563;
-}
-
-.dark .tiptap-editor .ProseMirror .selectedCell:after {
-  background: rgba(200, 200, 255, 0.4);
-}
-
-.dark .tiptap-editor .ProseMirror .column-resize-handle {
-  background-color: #3b82f6;
-}
-
-/* Enhanced TipTap styles for better dark mode support */
-.tiptap-editor .ProseMirror {
-  background-color: transparent !important;
-  color: inherit !important;
-}
-
-.tiptap-editor .ProseMirror p {
-  color: inherit !important;
-}
-
-.tiptap-editor .ProseMirror h1,
-.tiptap-editor .ProseMirror h2,
-.tiptap-editor .ProseMirror h3,
-.tiptap-editor .ProseMirror h4,
-.tiptap-editor .ProseMirror h5,
-.tiptap-editor .ProseMirror h6 {
-  color: inherit !important;
-}
-
-.tiptap-editor .ProseMirror ul,
-.tiptap-editor .ProseMirror ol {
-  color: inherit !important;
-}
-
-.tiptap-editor .ProseMirror li {
-  color: inherit !important;
-}
-
-/* Focus styles for TipTap */
+/* Focus styles */
 .tiptap-editor .ProseMirror:focus {
   outline: none;
   box-shadow: none;
@@ -515,4 +316,359 @@
 
 .dark .tiptap-editor .ProseMirror p.is-editor-empty:first-child::before {
   color: #6b7280;
+}
+
+/* ======================================================================================== */
+/* TipTap Diff Highlighting Styles - CRITICAL - HIGHEST PRIORITY */
+/* ======================================================================================== */
+
+/* ADDITION - Yeşil renk (Eklenen içerik) */
+.tiptap-editor .ProseMirror span[data-diff-type="inline-insert"],
+.tiptap-editor span[data-diff-type="inline-insert"],
+span[data-diff-type="inline-insert"] {
+  background-color: #dcfce7 !important;
+  color: #166534 !important;
+  border: 2px solid #22c55e !important;
+  border-radius: 4px !important;
+  padding: 2px 6px !important;
+  font-weight: 600 !important;
+  text-decoration: none !important;
+  display: inline !important;
+  margin: 0 2px !important;
+  box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.3) !important;
+}
+
+/* DELETION - Kırmızı renk (Silinen içerik) */
+.tiptap-editor .ProseMirror span[data-diff-type="inline-delete"],
+.tiptap-editor span[data-diff-type="inline-delete"],
+span[data-diff-type="inline-delete"] {
+  background-color: #fef2f2 !important;
+  color: #dc2626 !important;
+  border: 2px solid #ef4444 !important;
+  border-radius: 4px !important;
+  padding: 2px 6px !important;
+  font-weight: 600 !important;
+  text-decoration: line-through !important;
+  display: inline !important;
+  margin: 0 2px !important;
+  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.3) !important;
+}
+
+/* PENDING - Mavi renk (Onay bekleyen içerik) */
+.tiptap-editor .ProseMirror span[data-diff-type="pending"],
+.tiptap-editor span[data-diff-type="pending"],
+span[data-diff-type="pending"] {
+  background-color: #dbeafe !important;
+  color: #1e40af !important;
+  border: 2px solid #3b82f6 !important;
+  border-radius: 4px !important;
+  padding: 2px 6px !important;
+  font-weight: 600 !important;
+  text-decoration: none !important;
+  display: inline !important;
+  margin: 0 2px !important;
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.3) !important;
+  animation: diff-glow 2s ease-in-out infinite alternate !important;
+}
+
+/* Dark Mode Versions */
+.dark .tiptap-editor .ProseMirror span[data-diff-type="inline-insert"],
+.dark .tiptap-editor span[data-diff-type="inline-insert"],
+.dark span[data-diff-type="inline-insert"] {
+  background-color: #14532d !important;
+  color: #bbf7d0 !important;
+  border-color: #16a34a !important;
+  box-shadow: 0 0 0 1px rgba(22, 163, 74, 0.4) !important;
+}
+
+.dark .tiptap-editor .ProseMirror span[data-diff-type="inline-delete"],
+.dark .tiptap-editor span[data-diff-type="inline-delete"],
+.dark span[data-diff-type="inline-delete"] {
+  background-color: #7f1d1d !important;
+  color: #fca5a5 !important;
+  border-color: #dc2626 !important;
+  box-shadow: 0 0 0 1px rgba(220, 38, 38, 0.4) !important;
+}
+
+.dark .tiptap-editor .ProseMirror span[data-diff-type="pending"],
+.dark .tiptap-editor span[data-diff-type="pending"],
+.dark span[data-diff-type="pending"] {
+  background-color: #1e3a8a !important;
+  color: #93c5fd !important;
+  border-color: #2563eb !important;
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.4) !important;
+}
+
+/* Animation for pending content */
+@keyframes diff-glow {
+  0% {
+    box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.3);
+  }
+  100% {
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.6);
+  }
+}
+
+/* ======================================================================================== */
+/* Diff Actions Panel */
+/* ======================================================================================== */
+
+.diff-actions-panel {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 8px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  z-index: 50;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.dark .diff-actions-panel {
+  background: #1f2937;
+  border-color: #374151;
+}
+
+.diff-actions-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.dark .diff-actions-info {
+  color: #9ca3af;
+}
+
+.diff-legend {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+}
+
+.diff-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.diff-legend-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.diff-legend-addition {
+  background-color: #dcfce7;
+  border-color: #22c55e;
+}
+
+.diff-legend-deletion {
+  background-color: #fef2f2;
+  border-color: #ef4444;
+}
+
+.diff-legend-pending {
+  background-color: #dbeafe;
+  border-color: #3b82f6;
+}
+
+.dark .diff-legend-addition {
+  background-color: #14532d;
+  border-color: #16a34a;
+}
+
+.dark .diff-legend-deletion {
+  background-color: #7f1d1d;
+  border-color: #dc2626;
+}
+
+.dark .diff-legend-pending {
+  background-color: #1e3a8a;
+  border-color: #2563eb;
+}
+
+/* Diff approval buttons */
+.diff-approve-btn {
+  background-color: #22c55e;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.2s;
+}
+
+.diff-approve-btn:hover {
+  background-color: #16a34a;
+  transform: translateY(-1px);
+}
+
+.diff-reject-btn {
+  background-color: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.2s;
+}
+
+.diff-reject-btn:hover {
+  background-color: #dc2626;
+  transform: translateY(-1px);
+}
+
+/* Diff summary badge */
+.diff-summary {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: #374151;
+  backdrop-filter: blur(4px);
+  z-index: 40;
+}
+
+.dark .diff-summary {
+  background: rgba(31, 41, 55, 0.95);
+  border-color: #374151;
+  color: #d1d5db;
+}
+
+/* Responsive diff panels */
+@media (max-width: 768px) {
+  .diff-actions-panel {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    left: 20px;
+    top: auto;
+    justify-content: center;
+  }
+  
+  .diff-summary {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    right: 20px;
+    text-align: center;
+  }
+}
+
+/* Legal Document Formatting Styles */
+.tiptap-editor .ProseMirror h1 {
+  font-size: 1.5em;
+  font-weight: bold;
+  margin: 1em 0 0.5em 0;
+  text-align: center;
+  color: inherit;
+}
+
+.tiptap-editor .ProseMirror h2 {
+  font-size: 1.3em;
+  font-weight: bold;
+  margin: 1em 0 0.5em 0;
+  text-align: center;
+  color: inherit;
+}
+
+.tiptap-editor .ProseMirror h3 {
+  font-size: 1.1em;
+  font-weight: bold;
+  margin: 0.8em 0 0.3em 0;
+  color: inherit;
+}
+
+.tiptap-editor .ProseMirror p {
+  margin: 0.5em 0;
+  text-align: justify;
+  line-height: 1.6;
+  color: inherit;
+}
+
+.tiptap-editor .ProseMirror ul {
+  margin: 0.5em 0;
+  padding-left: 1.5em;
+  color: inherit;
+}
+
+.tiptap-editor .ProseMirror li {
+  margin: 0.3em 0;
+  color: inherit;
+}
+
+.tiptap-editor .ProseMirror strong {
+  font-weight: bold;
+  color: inherit;
+}
+
+.tiptap-editor .ProseMirror .signature {
+  margin-top: 2em;
+  text-align: right;
+  border-top: 1px solid #ccc;
+  padding-top: 1em;
+}
+
+.dark .tiptap-editor .ProseMirror .signature {
+  border-top-color: #4b5563;
+}
+
+/* User attribution tooltips */
+[data-diff-user-id] {
+  cursor: pointer;
+  position: relative;
+  display: inline-block;
+}
+
+[data-diff-user-id]::before {
+  content: attr(data-diff-user-id);
+  font-weight: normal;
+  line-height: normal;
+  visibility: hidden;
+  background-color: #fff;
+  border: 1px solid #374151;
+  color: #374151;
+  text-align: center;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  padding: 3px 6px;
+  position: absolute;
+  z-index: 1000;
+  top: 105%;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+[data-diff-user-id]:hover::before {
+  visibility: visible;
+}
+
+.dark [data-diff-user-id]::before {
+  background-color: #1f2937;
+  border-color: #d1d5db;
+  color: #d1d5db;
 } 

@@ -229,6 +229,8 @@
 .tiptap-editor .ProseMirror {
   outline: none !important;
   min-height: 400px;
+  height: auto;
+  overflow-y: auto;
   font-family: 'Times New Roman', serif;
   font-size: 12pt;
   line-height: 1.5;

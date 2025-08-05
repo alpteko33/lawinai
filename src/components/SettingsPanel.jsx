@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Key, CheckCircle, Info, ArrowLeft, Sun, Moon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 function SettingsPanel({ onBack, darkMode, onToggleTheme }) {
   const [appVersion, setAppVersion] = useState('1.0.0');
@@ -23,8 +24,9 @@ function SettingsPanel({ onBack, darkMode, onToggleTheme }) {
 
 
   return (
-    <div className="flex-1 overflow-y-auto p-6">
-      <div className="max-w-2xl mx-auto space-y-8">
+    <div className="flex-1 flex flex-col h-full">
+      <ScrollArea className="flex-1 px-6 py-6">
+        <div className="max-w-2xl mx-auto space-y-8 pb-6">
         {/* Header */}
         <div>
           <div className="flex items-center justify-between mb-2">
@@ -184,7 +186,8 @@ function SettingsPanel({ onBack, darkMode, onToggleTheme }) {
             </div>
           </div>
         </div>
-      </div>
+        </div>
+      </ScrollArea>
     </div>
   );
 }

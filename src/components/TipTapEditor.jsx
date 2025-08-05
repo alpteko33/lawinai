@@ -459,7 +459,7 @@ const TipTapEditor = React.memo(({
           disabled={!editor.can().chain().focus().toggleBold().run()}
           className={`p-2 rounded transition-colors ${
             editor.isActive('bold') 
-              ? 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400' 
+              ? 'bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-100' 
               : 'hover:bg-gray-200 dark:hover:bg-gray-700'
           }`}
           title="Kalın (Ctrl+B)"
@@ -472,7 +472,7 @@ const TipTapEditor = React.memo(({
           disabled={!editor.can().chain().focus().toggleItalic().run()}
           className={`p-2 rounded transition-colors ${
             editor.isActive('italic') 
-              ? 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400' 
+              ? 'bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-100' 
               : 'hover:bg-gray-200 dark:hover:bg-gray-700'
           }`}
           title="İtalik (Ctrl+I)"
@@ -484,7 +484,7 @@ const TipTapEditor = React.memo(({
           onClick={() => editor.chain().focus().toggleUnderline().run()}
           className={`p-2 rounded transition-colors ${
             editor.isActive('underline') 
-              ? 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400' 
+              ? 'bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-100' 
               : 'hover:bg-gray-200 dark:hover:bg-gray-700'
           }`}
           title="Altı Çizili (Ctrl+U)"
@@ -496,7 +496,7 @@ const TipTapEditor = React.memo(({
           onClick={() => editor.chain().focus().toggleStrike().run()}
           className={`p-2 rounded transition-colors ${
             editor.isActive('strike') 
-              ? 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400' 
+              ? 'bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-100' 
               : 'hover:bg-gray-200 dark:hover:bg-gray-700'
           }`}
           title="Üstü Çizili"
@@ -510,7 +510,7 @@ const TipTapEditor = React.memo(({
           onClick={() => editor.chain().focus().setTextAlign('left').run()}
           className={`p-2 rounded transition-colors ${
             editor.isActive({ textAlign: 'left' }) 
-              ? 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400' 
+              ? 'bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-100' 
               : 'hover:bg-gray-200 dark:hover:bg-gray-700'
           }`}
           title="Sola Hizala"
@@ -522,7 +522,7 @@ const TipTapEditor = React.memo(({
           onClick={() => editor.chain().focus().setTextAlign('center').run()}
           className={`p-2 rounded transition-colors ${
             editor.isActive({ textAlign: 'center' }) 
-              ? 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400' 
+              ? 'bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-100' 
               : 'hover:bg-gray-200 dark:hover:bg-gray-700'
           }`}
           title="Ortala"
@@ -534,7 +534,7 @@ const TipTapEditor = React.memo(({
           onClick={() => editor.chain().focus().setTextAlign('right').run()}
           className={`p-2 rounded transition-colors ${
             editor.isActive({ textAlign: 'right' }) 
-              ? 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400' 
+              ? 'bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-100' 
               : 'hover:bg-gray-200 dark:hover:bg-gray-700'
           }`}
           title="Sağa Hizala"
@@ -546,7 +546,7 @@ const TipTapEditor = React.memo(({
           onClick={() => editor.chain().focus().setTextAlign('justify').run()}
           className={`p-2 rounded transition-colors ${
             editor.isActive({ textAlign: 'justify' }) 
-              ? 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400' 
+              ? 'bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-100' 
               : 'hover:bg-gray-200 dark:hover:bg-gray-700'
           }`}
           title="İki Yana Yasla"
@@ -560,7 +560,7 @@ const TipTapEditor = React.memo(({
           onClick={() => editor.chain().focus().toggleHighlight().run()}
           className={`p-2 rounded transition-colors ${
             editor.isActive('highlight') 
-              ? 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400' 
+              ? 'bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-100' 
               : 'hover:bg-gray-200 dark:hover:bg-gray-700'
           }`}
           title="Vurgula"
@@ -575,11 +575,11 @@ const TipTapEditor = React.memo(({
     <div className={`flex flex-col h-full ${className}`} style={style}>
       <MenuBar />
       
-      <div className="relative flex-1">
+      <div className="relative flex-1 overflow-auto">
         <EditorContent 
           ref={editorRef}
           editor={editor} 
-          className="h-full p-4 focus:outline-none text-gray-900 dark:text-white tiptap-editor"
+          className="h-full p-4 focus:outline-none text-gray-900 dark:text-white tiptap-editor overflow-auto"
           style={{
             fontFamily: "'Times New Roman', serif",
             fontSize: '12pt',

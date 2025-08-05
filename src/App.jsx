@@ -21,6 +21,7 @@ import {
 
 function App() {
   const [activeView, setActiveView] = useState('login'); // login, welcome, editor, settings, training
+  const [previousView, setPreviousView] = useState('login'); // Önceki view'ı hatırlamak için
   const [darkMode, setDarkMode] = useState(true); // New dark mode state
   
   // Force login screen at component mount (especially for Electron)
@@ -359,6 +360,7 @@ function App() {
       console.log('Loading content for tab:', targetTab.title, 'Content:', targetTab.data.content?.substring(0, 50) + '...');
       setCurrentDocument(prev => ({
         ...prev,
+        title: targetTab.title,
         content: targetTab.data.content || '',
         hasChanges: targetTab.data.hasChanges || false,
         aiChanges: targetTab.data.aiChanges || []
@@ -387,6 +389,14 @@ function App() {
         ? { ...tab, title: newTitle }
         : tab
     ));
+    
+    // Eğer yeniden adlandırılan tab aktif tab ise currentDocument.title'ı da güncelle
+    if (tabId === activeTabId) {
+      setCurrentDocument(prev => ({
+        ...prev,
+        title: newTitle
+      }));
+    }
   };
 
   // Load chat from history
@@ -877,6 +887,12 @@ function App() {
   };
 
   const handleOpenSettingsFromLogin = () => {
+    setPreviousView('login');
+    setActiveView('settings');
+  };
+
+  const handleOpenSettings = () => {
+    setPreviousView(activeView);
     setActiveView('settings');
   };
 
@@ -1490,7 +1506,7 @@ function App() {
     return (
       <div className="h-screen bg-background text-foreground">
         <SettingsPanel 
-          onBack={() => setActiveView('login')}
+          onBack={() => setActiveView(previousView)}
           darkMode={darkMode}
           onToggleTheme={toggleTheme}
         />
@@ -1515,7 +1531,7 @@ function App() {
         currentDocument={currentDocument}
         onExport={handleExport}
         onNewDocument={handleNewDocument}
-        onOpenSettings={() => setActiveView('settings')}
+        onOpenSettings={handleOpenSettings}
         darkMode={darkMode}
         onToggleTheme={toggleTheme}
       />

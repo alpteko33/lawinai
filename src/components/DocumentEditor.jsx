@@ -206,7 +206,7 @@ function DocumentEditor({
                 key={tab.id}
                 className={`flex items-center space-x-2 px-3 py-2 rounded-t-lg border-b-2 cursor-pointer transition-colors min-w-0 ${
                   activeTabId === tab.id
-                    ? 'bg-gray-50 dark:bg-gray-700 border-blue-500 text-blue-600 dark:text-blue-400'
+                    ? 'bg-gray-50 dark:bg-gray-700 border-purple-500 text-purple-600 dark:text-purple-400'
                     : 'bg-transparent border-transparent text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
                 }`}
                 onClick={() => onTabChange(tab.id)}
@@ -288,7 +288,7 @@ function DocumentEditor({
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-auto">
         {isPDFTab ? (
           // PDF Viewer Tab
           <FileViewer file={activeTab.data.file} />

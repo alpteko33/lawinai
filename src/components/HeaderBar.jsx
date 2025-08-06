@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Scale, Settings, User, Sun, Moon, Download, FileText } from 'lucide-react';
+import { Scale, Settings, User, Sun, Moon, Download, FileText, Folder, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import udfService from '../services/udfService';
 
@@ -67,14 +67,12 @@ function HeaderBar({ currentDocument, onExport, onNewDocument, onOpenSettings, d
 
   return (
     <div className="h-10 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-4">
-      {/* Left: App Logo & Document Title */}
+      {/* Left: App Logo */}
       <div className="flex items-center space-x-4">
         <div className="flex items-center space-x-2">
           <Scale className="w-6 h-6 text-primary" />
           <span className="text-base font-bold text-gray-900 dark:text-gray-100">LawInAI</span>
         </div>
-        
-        <div className="h-6 w-px bg-gray-300 dark:bg-gray-600" />
       </div>
 
       {/* Right: Actions & User Menu */}

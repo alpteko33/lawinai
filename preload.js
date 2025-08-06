@@ -4,8 +4,22 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('electronAPI', {
   // Dosya işlemleri
   openFileDialog: () => ipcRenderer.invoke('dialog:openFile'),
+  openFolderDialog: () => ipcRenderer.invoke('dialog:openFolder'),
   readFile: (filePath) => ipcRenderer.invoke('fs:readFile', filePath),
   readFileAsBase64: (filePath) => ipcRenderer.invoke('fs:readFileAsBase64', filePath),
+  writeFile: (filePath, content) => ipcRenderer.invoke('fs:writeFile', filePath, content),
+  listWorkspaceFiles: (workspacePath) => ipcRenderer.invoke('fs:listWorkspaceFiles', workspacePath),
+  watchWorkspace: (workspacePath) => ipcRenderer.invoke('fs:watchWorkspace', workspacePath),
+  copyToWorkspace: (sourcePath, workspacePath, fileName) => ipcRenderer.invoke('fs:copyToWorkspace', sourcePath, workspacePath, fileName),
+  handleDroppedFiles: (filePaths, workspacePath) => ipcRenderer.invoke('fs:handleDroppedFiles', filePaths, workspacePath),
+  
+  // File watcher events için listener
+  onWorkspaceFileChange: (callback) => {
+    ipcRenderer.on('workspace-file-change', (event, fileInfo) => callback(fileInfo));
+  },
+  removeWorkspaceFileListener: () => {
+    ipcRenderer.removeAllListeners('workspace-file-change');
+  },
   
   // Storage işlemleri
   store: {

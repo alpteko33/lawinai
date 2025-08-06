@@ -1,7 +1,7 @@
 import React from 'react';
 import { Scale, Upload, MessageSquare, FileText, Zap, Shield, Globe } from 'lucide-react';
 
-function WelcomeScreen({ onGetStarted, onUploadFile }) {
+function WelcomeScreen({ onGetStarted, onOpenProject, onUploadFile }) {
   const features = [
     {
       icon: MessageSquare,
@@ -76,7 +76,14 @@ function WelcomeScreen({ onGetStarted, onUploadFile }) {
               onClick={onGetStarted}
               className="btn-primary text-lg px-8 py-3"
             >
-              Başlayın
+              Hızlı Başlangıç
+            </button>
+            <button
+              onClick={onOpenProject}
+              className="btn-primary text-lg px-8 py-3 flex items-center space-x-2"
+            >
+              <Scale className="w-5 h-5" />
+              <span>Proje Aç</span>
             </button>
             <button
               onClick={onUploadFile}
@@ -158,13 +165,22 @@ function WelcomeScreen({ onGetStarted, onUploadFile }) {
             <p className="text-gray-300 mb-6">
               İlk dava dosyanızı yükleyin ve AI asistanınızın gücünü keşfedin
             </p>
-            <button
-              onClick={onUploadFile}
-              className="btn-primary text-lg px-8 py-3 flex items-center space-x-2 mx-auto"
-            >
-              <Upload className="w-5 h-5" />
-              <span>İlk Dosyayı Yükle</span>
-            </button>
+            <div className="flex justify-center space-x-4">
+              <button
+                onClick={onOpenProject}
+                className="btn-primary text-lg px-6 py-3 flex items-center space-x-2"
+              >
+                <Scale className="w-5 h-5" />
+                <span>Proje Aç</span>
+              </button>
+              <button
+                onClick={onUploadFile}
+                className="btn-secondary text-lg px-6 py-3 flex items-center space-x-2"
+              >
+                <Upload className="w-5 h-5" />
+                <span>Dosya Yükle</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { FileText, MessageSquare, Settings, Upload, Bot, Scale } from 'lucide-react';
 import HeaderBar from './components/HeaderBar';
-import LeftSidebar from './components/LeftSidebar';
+
+import FileExplorer from './components/FileExplorer';
 import DocumentEditor from './components/DocumentEditor';
 import AIChatPanel from './components/AIChatPanel';
 import AITrainingPanel from './components/AITrainingPanel';
@@ -50,6 +51,11 @@ function App() {
   // Main states
   const [currentView, setCurrentView] = useState('welcome');
   const [selectedTheme, setSelectedTheme] = useState('dark');  
+  
+  // Workspace state - Cursor benzeri proje yönetimi
+  const [currentWorkspace, setCurrentWorkspace] = useState(null); // { path: string, name: string }
+  const [workspaceLoaded, setWorkspaceLoaded] = useState(false);
+  
   const [currentDocument, setCurrentDocument] = useState({
     name: 'Yeni Dilekçe',
     title: 'Hukuki Metin', // UDF export için başlık
@@ -94,6 +100,7 @@ function App() {
     }
   ]);
   const [activeTabId, setActiveTabId] = useState('doc-main');
+  const [selectedFile, setSelectedFile] = useState(null);
 
   // Optimized highlight refresh - only when needed
   useEffect(() => {
@@ -106,6 +113,29 @@ function App() {
     
     return () => clearInterval(timer);
   }, [currentDocument.aiChanges]);
+
+  // Workspace initialization - son açılan workspace'i yükle
+  useEffect(() => {
+    const loadWorkspace = async () => {
+      if (window.electronAPI) {
+        try {
+          const savedWorkspace = await window.electronAPI.store.get('currentWorkspace');
+          if (savedWorkspace && savedWorkspace.path) {
+            setCurrentWorkspace(savedWorkspace);
+            console.log('Saved workspace loaded:', savedWorkspace);
+            
+            // File watcher'ı başlat
+            await window.electronAPI.watchWorkspace(savedWorkspace.path);
+          }
+        } catch (error) {
+          console.error('Workspace loading error:', error);
+        }
+      }
+      setWorkspaceLoaded(true);
+    };
+
+    loadWorkspace();
+  }, []);
 
   // App initialization
   useEffect(() => {
@@ -155,12 +185,47 @@ function App() {
   };
 
   const handleDocumentSave = async () => {
-    // Implement document save logic
-    setCurrentDocument(prev => ({
-      ...prev,
-      hasChanges: false,
-      lastSaved: new Date().toISOString()
-    }));
+    if (!currentWorkspace) {
+      alert('Dosyayı kaydetmek için önce bir proje klasörü açın');
+      return;
+    }
+
+    try {
+      // Dosya adı belirle
+      const fileName = `${currentDocument.title || 'dilekce'}.txt`;
+      const filePath = window.electronAPI ? 
+        require('path').join(currentWorkspace.path, fileName) : 
+        fileName;
+
+      if (window.electronAPI) {
+        // Electron - workspace içine kaydet
+        await window.electronAPI.writeFile(filePath, currentDocument.content);
+        console.log('Document saved to workspace:', filePath);
+      } else {
+        // Web fallback - download as file
+        const blob = new Blob([currentDocument.content], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+
+      setCurrentDocument(prev => ({
+        ...prev,
+        hasChanges: false,
+        lastSaved: new Date().toISOString()
+      }));
+
+      // Workspace dosyalarını yenile
+      if (currentWorkspace) {
+        loadWorkspaceFiles();
+      }
+    } catch (error) {
+      console.error('Document save error:', error);
+      alert('Dosya kaydedilirken hata oluştu: ' + error.message);
+    }
   };
 
   const handleNewDocument = () => {
@@ -203,29 +268,55 @@ function App() {
           
           if (!cancelled && filePaths && Array.isArray(filePaths) && filePaths.length > 0) {
             // Process uploaded files
-            filePaths.forEach((filePath, index) => {
+            for (const [index, filePath] of filePaths.entries()) {
               const fileName = filePath.split('/').pop() || filePath.split('\\').pop(); // Handle both Unix and Windows paths
               const fileExtension = fileName.split('.').pop().toLowerCase();
+              
+              let finalFilePath = filePath;
+              
+              // Eğer workspace varsa, dosyayı workspace'e kopyala
+              if (currentWorkspace) {
+                try {
+                  const copyResult = await window.electronAPI.copyToWorkspace(
+                    filePath, 
+                    currentWorkspace.path, 
+                    fileName
+                  );
+                  if (copyResult.success) {
+                    finalFilePath = copyResult.targetPath;
+                    console.log('File copied to workspace:', finalFilePath);
+                  }
+                } catch (error) {
+                  console.error('Error copying to workspace:', error);
+                  // Hata durumunda orijinal dosya yolu kullanılır
+                }
+              }
               
               const newFile = {
                 id: Date.now() + index,
                 name: fileName,
-                path: filePath,
+                path: finalFilePath,
                 type: fileExtension,
                 size: 0, // Electron could provide this if we implement file stats
-                uploadedAt: new Date().toISOString()
+                uploadedAt: new Date().toISOString(),
+                isWorkspaceFile: !!currentWorkspace
               };
               
               console.log('Adding new Electron file:', newFile);
-              setUploadedFiles(prev => {
-                const updated = [...prev, newFile];
-                console.log('Updated files list after Electron upload:', updated);
-                return updated;
-              });
+              
+              // Eğer workspace'e kopyalandıysa, file watcher otomatik ekleyecek
+              // Değilse manuel olarak ekle
+              if (!currentWorkspace) {
+                setUploadedFiles(prev => {
+                  const updated = [...prev, newFile];
+                  console.log('Updated files list after Electron upload:', updated);
+                  return updated;
+                });
+              }
               
               // Dosyayı RAG sistemine ekle
               addFileToRAG(newFile);
-            });
+            }
           } else {
             console.log('Electron file dialog cancelled or no files selected');
           }
@@ -331,7 +422,12 @@ function App() {
 
   const handleFileSelect = (file) => {
     console.log('Selected file:', file);
-    // Implement file selection logic
+    setSelectedFile(file);
+    
+    // Dosyayı görüntüleme modunda aç
+    if (file && file.type !== 'folder') {
+      handleViewFile(file);
+    }
   };
 
   const handleTemplateSelect = (template) => {
@@ -879,12 +975,141 @@ function App() {
     geminiService.clearChat();
   };
 
-  // Login screen handlers
+  // Workspace handlers
   const handleOpenProject = async () => {
-    console.log('Opening project...');
-    // Implement project opening logic
-    setActiveView('editor');
+    console.log('Opening project workspace...');
+    
+    if (window.electronAPI) {
+      try {
+        const result = await window.electronAPI.openFolderDialog();
+        console.log('Folder selection result:', result);
+        
+        if (!result.canceled && result.filePaths && result.filePaths.length > 0) {
+          const workspacePath = result.filePaths[0];
+          const workspaceName = workspacePath.split(/[/\\]/).pop() || 'Workspace';
+          
+          const workspace = {
+            path: workspacePath,
+            name: workspaceName,
+            openedAt: new Date().toISOString()
+          };
+          
+          setCurrentWorkspace(workspace);
+          
+          // Workspace'i kalıcı olarak kaydet
+          await window.electronAPI.store.set('currentWorkspace', workspace);
+          
+          // File watcher'ı başlat
+          await window.electronAPI.watchWorkspace(workspacePath);
+          
+          console.log('Workspace opened:', workspace);
+          setActiveView('editor');
+        }
+      } catch (error) {
+        console.error('Workspace opening error:', error);
+        alert('Proje klasörü açılırken hata oluştu: ' + error.message);
+      }
+    } else {
+      // Web fallback - LocalStorage kullan
+      const workspacePath = prompt('Proje klasör yolunu girin:');
+      if (workspacePath) {
+        const workspace = {
+          path: workspacePath,
+          name: workspacePath.split(/[/\\]/).pop() || 'Proje',
+          openedAt: new Date().toISOString()
+        };
+        setCurrentWorkspace(workspace);
+        localStorage.setItem('currentWorkspace', JSON.stringify(workspace));
+        setActiveView('editor');
+      }
+    }
   };
+
+  const handleCloseWorkspace = async () => {
+    // File watcher'ı durdur
+    if (window.electronAPI) {
+      await window.electronAPI.watchWorkspace(null);
+      window.electronAPI.removeWorkspaceFileListener();
+    }
+    
+    setCurrentWorkspace(null);
+    if (window.electronAPI) {
+      await window.electronAPI.store.set('currentWorkspace', null);
+    } else {
+      localStorage.removeItem('currentWorkspace');
+    }
+    setActiveView('welcome');
+  };
+
+  // Workspace dosyalarını yükle
+  const loadWorkspaceFiles = async () => {
+    if (!currentWorkspace || !window.electronAPI) return;
+
+    try {
+      const workspaceFiles = await window.electronAPI.listWorkspaceFiles(currentWorkspace.path);
+      console.log('Workspace files loaded:', workspaceFiles.length);
+      
+      // Workspace dosyalarını mevcut dosyalar listesine ekle
+      setUploadedFiles(prev => {
+        // Workspace dosyalarını filtrele (duplicates önlemek için)
+        const nonWorkspaceFiles = prev.filter(file => !file.isWorkspaceFile);
+        return [...nonWorkspaceFiles, ...workspaceFiles.map(file => ({
+          ...file,
+          id: Date.now() + Math.random(),
+          uploadedAt: new Date().toISOString()
+        }))];
+      });
+    } catch (error) {
+      console.error('Workspace files loading error:', error);
+    }
+  };
+
+  // Workspace değiştiğinde dosyaları yükle ve file watcher başlat
+  useEffect(() => {
+    if (currentWorkspace) {
+      loadWorkspaceFiles();
+      
+      // File watcher event listener'ı ekle
+      if (window.electronAPI) {
+        window.electronAPI.onWorkspaceFileChange((fileInfo) => {
+          console.log('File change detected:', fileInfo);
+          
+          if (fileInfo.event === 'add') {
+            // Yeni dosya eklendi
+            const newFile = {
+              ...fileInfo,
+              id: Date.now() + Math.random(),
+              uploadedAt: new Date().toISOString()
+            };
+            
+            setUploadedFiles(prev => {
+              // Duplicate kontrolü
+              const exists = prev.find(f => f.path === fileInfo.path);
+              if (exists) return prev;
+              return [...prev, newFile];
+            });
+          } else if (fileInfo.event === 'unlink') {
+            // Dosya silindi
+            setUploadedFiles(prev => prev.filter(f => f.path !== fileInfo.path));
+          } else if (fileInfo.event === 'change') {
+            // Dosya değişti
+            setUploadedFiles(prev => prev.map(f => 
+              f.path === fileInfo.path 
+                ? { ...f, size: fileInfo.size, lastModified: fileInfo.lastModified }
+                : f
+            ));
+          }
+        });
+      }
+    }
+    
+    // Cleanup function
+    return () => {
+      if (window.electronAPI) {
+        window.electronAPI.removeWorkspaceFileListener();
+      }
+    };
+  }, [currentWorkspace]);
 
   const handleOpenSettingsFromLogin = () => {
     setPreviousView('login');
@@ -1495,6 +1720,7 @@ function App() {
       <div className="h-screen bg-background text-foreground">
         <WelcomeScreen 
           onGetStarted={() => setActiveView('editor')}
+          onOpenProject={handleOpenProject}
           onUploadFile={handleFileUpload}
         />
       </div>
@@ -1538,20 +1764,15 @@ function App() {
 
       {/* 3-Panel Layout */}
       <ResizablePanelGroup direction="horizontal" className="flex-1">
-        {/* Left Sidebar - Files, Templates, etc. */}
+        {/* Left Sidebar - File Explorer */}
         <ResizablePanel defaultSize={20} minSize={15} maxSize={30}>
-          <LeftSidebar 
+          <FileExplorer 
             files={uploadedFiles}
             onFileUpload={handleFileUpload}
             onFileSelect={handleFileSelect}
-            onNewDocument={handleNewDocument}
-            currentDocument={currentDocument}
             onViewFile={handleViewFile}
-            onFileRemove={handleFileRemove}
-            onFileRename={handleFileRename}
-            onCreateFolder={handleCreateFolder}
-            onCreateFile={handleCreateFile}
-            onPasteFile={handlePasteFile}
+            currentWorkspace={currentWorkspace}
+            selectedFile={selectedFile}
           />
         </ResizablePanel>
 

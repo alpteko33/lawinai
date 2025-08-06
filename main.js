@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs').promises;
 const Store = require('electron-store');
+const chokidar = require('chokidar');
 
 // Güvenli storage için
 const store = new Store();
@@ -95,6 +96,10 @@ const isDev = process.env.NODE_ENV === 'development';
 
 // Ana pencere referansı
 let mainWindow;
+
+// File watcher for workspace
+let workspaceWatcher = null;
+let currentWorkspacePath = null;
 
 function createWindow() {
   // Ana pencereyi oluştur
@@ -242,6 +247,28 @@ ipcMain.handle('dialog:openFile', async () => {
   }
 });
 
+// Klasör seçme dialog'u - Workspace için
+ipcMain.handle('dialog:openFolder', async () => {
+  try {
+    console.log('Electron Main: Opening folder dialog');
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openDirectory'],
+      title: 'Proje Klasörünü Seçin',
+      buttonLabel: 'Proje Olarak Aç'
+    });
+    
+    console.log('Electron Main: Folder dialog result:', result);
+    return result;
+  } catch (error) {
+    console.error('Electron Main: Folder dialog error:', error);
+    return { 
+      canceled: true, 
+      filePaths: [],
+      error: error.message 
+    };
+  }
+});
+
 // Dosya okuma - File System API
 ipcMain.handle('fs:readFile', async (event, filePath) => {
   try {
@@ -263,6 +290,219 @@ ipcMain.handle('fs:readFileAsBase64', async (event, filePath) => {
   } catch (error) {
     console.error('File read as base64 error:', error);
     throw error;
+  }
+});
+
+// Dosya yazma - Workspace içinde dosya kaydetme
+ipcMain.handle('fs:writeFile', async (event, filePath, content) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    
+    // Klasör yoksa oluştur
+    const dir = path.dirname(filePath);
+    await fs.promises.mkdir(dir, { recursive: true });
+    
+    // Dosyayı yaz
+    await fs.promises.writeFile(filePath, content, 'utf8');
+    console.log('File saved:', filePath);
+    return { success: true, path: filePath };
+  } catch (error) {
+    console.error('File write error:', error);
+    throw error;
+  }
+});
+
+// Workspace dosya listesi - Klasördeki dosyaları listele
+ipcMain.handle('fs:listWorkspaceFiles', async (event, workspacePath) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    
+    const files = [];
+    
+    async function scanDirectory(dirPath, relativePath = '') {
+      const items = await fs.promises.readdir(dirPath, { withFileTypes: true });
+      
+      for (const item of items) {
+        const fullPath = path.join(dirPath, item.name);
+        const relPath = path.join(relativePath, item.name);
+        
+        if (item.isDirectory()) {
+          // Alt klasörleri de tara
+          await scanDirectory(fullPath, relPath);
+        } else {
+          // Desteklenen dosya türlerini filtrele
+          const ext = path.extname(item.name).toLowerCase();
+          const supportedExts = ['.udf', '.pdf', '.doc', '.docx', '.txt', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.tiff', '.tif'];
+          
+          if (supportedExts.includes(ext)) {
+            const stats = await fs.promises.stat(fullPath);
+            files.push({
+              name: item.name,
+              path: fullPath,
+              relativePath: relPath,
+              type: ext.substring(1),
+              size: stats.size,
+              lastModified: stats.mtime,
+              isWorkspaceFile: true
+            });
+          }
+        }
+      }
+    }
+    
+    await scanDirectory(workspacePath);
+    console.log(`Found ${files.length} files in workspace:`, workspacePath);
+    return files;
+  } catch (error) {
+    console.error('Workspace file listing error:', error);
+    return [];
+  }
+});
+
+// Workspace file watcher başlat
+ipcMain.handle('fs:watchWorkspace', async (event, workspacePath) => {
+  try {
+    // Önceki watcher'ı kapat
+    if (workspaceWatcher) {
+      await workspaceWatcher.close();
+      workspaceWatcher = null;
+    }
+
+    if (!workspacePath) {
+      console.log('Workspace watcher stopped');
+      return { success: true };
+    }
+
+    console.log('Starting workspace watcher for:', workspacePath);
+    currentWorkspacePath = workspacePath;
+
+    // Desteklenen dosya türleri
+    const supportedExts = ['.udf', '.pdf', '.doc', '.docx', '.txt', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.tiff', '.tif'];
+    
+    // File watcher başlat
+    workspaceWatcher = chokidar.watch(workspacePath, {
+      ignored: /(^|[\/\\])\../, // hidden files'ları ignore et
+      persistent: true,
+      ignoreInitial: false,
+      depth: 10 // 10 seviye derinlik
+    });
+
+    // File events'leri dinle
+    workspaceWatcher
+      .on('add', async (filePath) => {
+        const ext = path.extname(filePath).toLowerCase();
+        if (supportedExts.includes(ext)) {
+          const stats = await fs.stat(filePath);
+          const fileInfo = {
+            name: path.basename(filePath),
+            path: filePath,
+            relativePath: path.relative(workspacePath, filePath),
+            type: ext.substring(1),
+            size: stats.size,
+            lastModified: stats.mtime,
+            isWorkspaceFile: true,
+            event: 'add'
+          };
+          console.log('File added:', fileInfo.name);
+          mainWindow?.webContents.send('workspace-file-change', fileInfo);
+        }
+      })
+      .on('unlink', (filePath) => {
+        const ext = path.extname(filePath).toLowerCase();
+        if (supportedExts.includes(ext)) {
+          const fileInfo = {
+            path: filePath,
+            relativePath: path.relative(workspacePath, filePath),
+            event: 'unlink'
+          };
+          console.log('File removed:', path.basename(filePath));
+          mainWindow?.webContents.send('workspace-file-change', fileInfo);
+        }
+      })
+      .on('change', async (filePath) => {
+        const ext = path.extname(filePath).toLowerCase();
+        if (supportedExts.includes(ext)) {
+          const stats = await fs.stat(filePath);
+          const fileInfo = {
+            name: path.basename(filePath),
+            path: filePath,
+            relativePath: path.relative(workspacePath, filePath),
+            type: ext.substring(1),
+            size: stats.size,
+            lastModified: stats.mtime,
+            isWorkspaceFile: true,
+            event: 'change'
+          };
+          console.log('File changed:', fileInfo.name);
+          mainWindow?.webContents.send('workspace-file-change', fileInfo);
+        }
+      })
+      .on('error', error => {
+        console.error('Workspace watcher error:', error);
+      });
+
+    return { success: true, watchedPath: workspacePath };
+  } catch (error) {
+    console.error('Workspace watcher setup error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Dosyayı workspace'e kopyala
+ipcMain.handle('fs:copyToWorkspace', async (event, sourcePath, workspacePath, fileName) => {
+  try {
+    const fs = require('fs');
+    let targetPath = path.join(workspacePath, fileName);
+    
+    // Eğer dosya zaten varsa, unique isim ver
+    let counter = 1;
+    const originalName = fileName;
+    const ext = path.extname(fileName);
+    const baseName = path.basename(fileName, ext);
+    
+    while (await fs.promises.access(targetPath).then(() => true).catch(() => false)) {
+      const newFileName = `${baseName} (${counter})${ext}`;
+      targetPath = path.join(workspacePath, newFileName);
+      counter++;
+    }
+    
+    // Hedef dizini oluştur
+    const targetDir = path.dirname(targetPath);
+    await fs.promises.mkdir(targetDir, { recursive: true });
+    
+    // Dosyayı kopyala
+    await fs.promises.copyFile(sourcePath, targetPath);
+    
+    console.log('File copied to workspace:', targetPath);
+    return { success: true, targetPath, finalFileName: path.basename(targetPath) };
+  } catch (error) {
+    console.error('File copy error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Drag & Drop file handling - Electron'a özgü
+ipcMain.handle('fs:handleDroppedFiles', async (event, filePaths, workspacePath) => {
+  try {
+    const results = [];
+    
+    for (const filePath of filePaths) {
+      const fileName = path.basename(filePath);
+      const copyResult = await ipcMain.emit('fs:copyToWorkspace', event, filePath, workspacePath, fileName);
+      results.push({
+        originalPath: filePath,
+        fileName: fileName,
+        result: copyResult
+      });
+    }
+    
+    console.log(`Processed ${results.length} dropped files`);
+    return { success: true, results };
+  } catch (error) {
+    console.error('Dropped files handling error:', error);
+    return { success: false, error: error.message };
   }
 });
 

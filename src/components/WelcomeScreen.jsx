@@ -54,19 +54,19 @@ function WelcomeScreen({ onGetStarted, onOpenProject, onUploadFile }) {
   ];
 
   return (
-    <div className="flex-1 overflow-y-auto bg-gray-900">
-      <div className="max-w-6xl mx-auto p-8">
+    <div className="flex-1 overflow-y-auto bg-gradient-to-br from-gray-900 via-gray-800/50 to-gray-900">
+      <div className="max-w-7xl mx-auto p-8">
         {/* Hero Section */}
         <div className="text-center mb-12">
-          <div className="flex items-center justify-center mb-6">
-            <Scale className="w-16 h-16 text-blue-400 mr-4" />
+          <div className="flex items-center justify-center mb-8">
+            <Scale className="w-20 h-20 text-purple-500 mr-6" />
             <div>
-              <h1 className="text-4xl font-bold text-white">LawInAI</h1>
-              <p className="text-xl text-blue-400">Hukuki AI Asistanınız</p>
+              <h1 className="text-5xl font-bold text-white tracking-tight">LawInAI</h1>
+              <p className="text-xl text-purple-400 font-medium">Hukuki AI Asistanınız</p>
             </div>
           </div>
           
-          <p className="text-lg text-gray-300 max-w-3xl mx-auto mb-8">
+          <p className="text-xl text-gray-300 max-w-4xl mx-auto mb-10 leading-relaxed">
             Yapay zeka destekli hukuki asistan ile dava dosyalarınızı analiz edin, 
             dilekçe hazırlayın ve hukuki süreçlerinizi hızlandırın.
           </p>
@@ -74,20 +74,20 @@ function WelcomeScreen({ onGetStarted, onOpenProject, onUploadFile }) {
           <div className="flex justify-center space-x-4">
             <button
               onClick={onGetStarted}
-              className="btn-primary text-lg px-8 py-3"
+              className="bg-purple-600 hover:bg-purple-700 text-white text-lg px-8 py-4 rounded-xl font-semibold transition-all duration-200 hover:scale-105 shadow-lg"
             >
               Hızlı Başlangıç
             </button>
             <button
               onClick={onOpenProject}
-              className="btn-primary text-lg px-8 py-3 flex items-center space-x-2"
+              className="bg-purple-600 hover:bg-purple-700 text-white text-lg px-8 py-4 rounded-xl font-semibold transition-all duration-200 hover:scale-105 shadow-lg flex items-center space-x-2"
             >
               <Scale className="w-5 h-5" />
               <span>Proje Aç</span>
             </button>
             <button
               onClick={onUploadFile}
-              className="btn-secondary text-lg px-8 py-3 flex items-center space-x-2"
+              className="bg-gray-700 hover:bg-gray-600 text-white text-lg px-8 py-4 rounded-xl font-semibold transition-all duration-200 hover:scale-105 shadow-lg flex items-center space-x-2"
             >
               <Upload className="w-5 h-5" />
               <span>Dosya Yükle</span>
@@ -96,21 +96,21 @@ function WelcomeScreen({ onGetStarted, onOpenProject, onUploadFile }) {
         </div>
 
         {/* Features Grid */}
-        <div className="mb-12">
-          <h2 className="text-2xl font-bold text-white mb-8 text-center">Özellikler</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="mb-16">
+          <h2 className="text-3xl font-bold text-white mb-10 text-center tracking-tight">Özellikler</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {features.map((feature, index) => {
               const Icon = feature.icon;
               return (
                 <div
                   key={index}
-                  className="panel p-6 hover:border-blue-500 transition-colors"
+                  className="bg-gray-800/50 backdrop-blur-sm border border-gray-700/50 p-8 rounded-xl hover:border-purple-500/50 transition-all duration-300 hover:scale-105"
                 >
                   <div className="flex items-center mb-4">
-                    <Icon className="w-8 h-8 text-blue-400 mr-3" />
-                    <h3 className="text-lg font-semibold text-white">{feature.title}</h3>
+                    <Icon className="w-10 h-10 text-purple-400 mr-4" />
+                    <h3 className="text-xl font-semibold text-white">{feature.title}</h3>
                   </div>
-                  <p className="text-gray-400">{feature.description}</p>
+                  <p className="text-gray-300 leading-relaxed">{feature.description}</p>
                 </div>
               );
             })}
@@ -123,7 +123,7 @@ function WelcomeScreen({ onGetStarted, onOpenProject, onUploadFile }) {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {quickStartSteps.map((step, index) => (
               <div key={index} className="text-center">
-                <div className="w-12 h-12 bg-blue-600 text-white rounded-full flex items-center justify-center text-xl font-bold mx-auto mb-4">
+                <div className="w-12 h-12 bg-purple-600 text-white rounded-full flex items-center justify-center text-xl font-bold mx-auto mb-4">
                   {step.step}
                 </div>
                 <h3 className="text-lg font-semibold text-white mb-2">{step.title}</h3>
@@ -168,7 +168,7 @@ function WelcomeScreen({ onGetStarted, onOpenProject, onUploadFile }) {
             <div className="flex justify-center space-x-4">
               <button
                 onClick={onOpenProject}
-                className="btn-primary text-lg px-6 py-3 flex items-center space-x-2"
+                className="bg-purple-600 hover:bg-purple-700 text-white text-lg px-6 py-3 rounded-xl font-semibold transition-all duration-200 hover:scale-105 shadow-lg flex items-center space-x-2"
               >
                 <Scale className="w-5 h-5" />
                 <span>Proje Aç</span>

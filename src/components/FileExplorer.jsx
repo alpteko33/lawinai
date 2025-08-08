@@ -15,9 +15,9 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 // File type icons - Enhanced with hover animations (no text color changes)
-const getFileIcon = (fileType, size = 18) => {
+  const getFileIcon = (fileType, size = 16) => {
   const type = fileType?.toLowerCase();
-  const props = { size, className: "flex-shrink-0 transition-transform duration-200 hover:scale-110" };
+  const props = { size, className: "flex-shrink-0 transition-colors duration-200" };
   
   switch (type) {
     case 'udf':
@@ -61,18 +61,22 @@ const FileTreeItem = ({ item, level = 0, onFileSelect, onViewFile, selectedFile 
     }
   };
   
+  // Üst seviye dosyaları (folder olmayan ve level 0) başlıkla hizalamak için
+  const marginAdjustment = (item.type !== 'folder' && level === 0) ? -3 : 0; // 16(icon)+8(gap)
+
   return (
     <div>
       <div
         className={`
-          flex items-center gap-2 py-1.5 cursor-pointer rounded-md
+          flex items-center gap-2 py-1 cursor-pointer rounded-lg
           transition-all duration-200 ease-in-out
-          shadow-sm hover:shadow-md hover:bg-gray-100 dark:hover:bg-gray-800 hover:scale-[1.02]
-          ${isSelected ? 'bg-blue-100 dark:bg-blue-900/30 shadow-md border border-blue-200 dark:border-blue-700' : 'border border-transparent'}
+          hover:bg-gray-50 dark:hover:bg-gray-800/50
+          ${isSelected ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200/50 dark:border-blue-700/50' : 'border border-transparent'}
         `}
         style={{ 
           paddingLeft: `${level * 16}px`,
-          paddingRight: '8px'
+          paddingRight: '8px',
+          marginLeft: marginAdjustment
         }}
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
@@ -85,31 +89,28 @@ const FileTreeItem = ({ item, level = 0, onFileSelect, onViewFile, selectedFile 
               ) : (
                 <ChevronRight size={16} className="text-gray-400 transition-transform duration-200" />
               )
-            ) : (
-              <div className="w-4" />
-            )}
-            {isExpanded ? (
-              <FolderOpen size={18} className="text-blue-500 transition-transform duration-200 hover:scale-110" />
-            ) : (
-              <Folder size={18} className="text-blue-500 transition-transform duration-200 hover:scale-110" />
-            )}
+            ) : null}
+                              {isExpanded ? (
+                    <FolderOpen size={16} className="text-blue-600 dark:text-blue-400 transition-colors duration-200" />
+                  ) : (
+                    <Folder size={16} className="text-blue-600 dark:text-blue-400 transition-colors duration-200" />
+                  )}
           </>
         ) : (
           <>
-            <div className="w-4" />
             {getFileIcon(item.type)}
           </>
         )}
         
-        <span className="text-sm font-medium truncate flex-1 min-w-0" title={item.name}>
+                      <span className="text-xs font-medium truncate flex-1 min-w-0 text-gray-700 dark:text-gray-200" title={item.name}>
           {item.name}
         </span>
         
-        {item.size && (
-          <span className="text-xs text-gray-400 ml-1">
-            {formatFileSize(item.size)}
-          </span>
-        )}
+                 {item.size && (
+           <span className="text-xs text-gray-500 dark:text-gray-400 ml-2 font-normal">
+             {formatFileSize(item.size)}
+           </span>
+         )}
       </div>
       
       {item.type === 'folder' && isExpanded && item.children?.map(child => (
@@ -303,76 +304,76 @@ function FileExplorer({
 
   return (
     <div 
-      className={`h-full flex flex-col bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 relative shadow-lg ${
-        isDragOver ? 'bg-blue-50 dark:bg-blue-900/20' : ''
+      className={`h-full flex flex-col bg-white dark:bg-gray-900 border-r border-gray-100 dark:border-gray-800 relative ${
+        isDragOver ? 'bg-blue-50/50 dark:bg-blue-900/10' : ''
       }`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
       {/* Header - CONSISTENT PADDING */}
-      <div className="flex-shrink-0 px-3 py-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50 shadow-sm">
+      <div className="flex-shrink-0 px-4 py-4 border-b border-gray-100 dark:border-gray-800 bg-gradient-to-r from-gray-50 to-gray-100/50 dark:from-gray-800 dark:to-gray-900/50">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-medium text-gray-900 dark:text-gray-100">
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 tracking-tight">
             {currentWorkspace ? (currentWorkspace.name || 'Workspace') : 'Dosyalar'}
           </h2>
           <div className="flex items-center gap-1">
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={onFileUpload}
-              className="h-7 w-7 p-0"
-              title="Dosya Yükle"
-            >
-              <Upload size={14} />
-            </Button>
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              className="h-7 w-7 p-0"
-              title="Daha Fazla"
-            >
-              <MoreHorizontal size={14} />
-            </Button>
+                         <Button 
+               variant="ghost" 
+               size="sm" 
+               onClick={onFileUpload}
+               className="h-8 w-8 p-0 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg"
+               title="Dosya Yükle"
+             >
+               <Upload size={15} className="text-gray-600 dark:text-gray-300" />
+             </Button>
+             <Button 
+               variant="ghost" 
+               size="sm" 
+               className="h-8 w-8 p-0 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg"
+               title="Daha Fazla"
+             >
+               <MoreHorizontal size={15} className="text-gray-600 dark:text-gray-300" />
+             </Button>
           </div>
         </div>
         
-        {/* Search */}
-        <div className="relative">
-          <Search size={14} className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Dosya ara..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-7 pr-3 py-1.5 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
-          />
-        </div>
+                 {/* Search */}
+         <div className="relative">
+           <Search size={15} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+           <input
+             type="text"
+             placeholder="Dosya ara..."
+             value={searchQuery}
+             onChange={(e) => setSearchQuery(e.target.value)}
+             className="w-full pl-9 pr-4 py-2 text-sm bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/50 transition-all duration-200"
+           />
+         </div>
       </div>
       
-      {/* File List - MATCHING PADDING */}
-      <ScrollArea className="flex-1">
-        <div className="px-3 py-2">
+             {/* File List - MATCHING PADDING */}
+       <ScrollArea className="flex-1">
+         <div className="px-4 py-3">
           {filteredFiles.length === 0 ? (
-            <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-              <File size={32} className="mx-auto mb-2 opacity-50" />
-              <p className="text-sm">
-                {searchQuery ? 'Dosya bulunamadı' : 'Henüz dosya yok'}
-              </p>
+                         <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+               <File size={40} className="mx-auto mb-3 opacity-40" />
+               <p className="text-sm font-medium">
+                 {searchQuery ? 'Dosya bulunamadı' : 'Henüz dosya yok'}
+               </p>
               {!searchQuery && (
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  onClick={onFileUpload}
-                  className="mt-2"
-                >
-                  <Upload size={14} className="mr-1" />
-                  Dosya Yükle
-                </Button>
+                                 <Button 
+                   variant="outline" 
+                   size="sm" 
+                   onClick={onFileUpload}
+                   className="mt-3 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800"
+                 >
+                   <Upload size={14} className="mr-2" />
+                   Dosya Yükle
+                 </Button>
               )}
             </div>
           ) : (
-            <div className="space-y-2">
+                         <div className="space-y-1">
               {filteredFiles.map(item => (
                 <FileTreeItem
                   key={item.id}
@@ -387,20 +388,20 @@ function FileExplorer({
         </div>
       </ScrollArea>
       
-      {/* Drag & Drop Overlay */}
-      {isDragOver && (
-        <div className="absolute inset-0 bg-blue-500/10 border-2 border-dashed border-blue-500 flex items-center justify-center z-50">
-          <div className="text-center">
-            <Upload size={32} className="mx-auto text-blue-500 mb-2" />
-            <p className="text-sm font-medium text-blue-700 dark:text-blue-300">
-              Dosyaları buraya bırakın
-            </p>
-            <p className="text-xs text-blue-600 dark:text-blue-400">
-              {currentWorkspace ? `${currentWorkspace.name} klasörüne eklenecek` : 'Yüklenecek'}
-            </p>
-          </div>
-        </div>
-      )}
+             {/* Drag & Drop Overlay */}
+       {isDragOver && (
+         <div className="absolute inset-0 bg-blue-500/5 border-2 border-dashed border-blue-400/50 rounded-lg flex items-center justify-center z-50 backdrop-blur-sm">
+           <div className="text-center bg-white/80 dark:bg-gray-900/80 p-6 rounded-xl border border-blue-200/50 dark:border-blue-700/50">
+             <Upload size={36} className="mx-auto text-blue-500 mb-3" />
+             <p className="text-sm font-semibold text-blue-700 dark:text-blue-300 mb-1">
+               Dosyaları buraya bırakın
+             </p>
+             <p className="text-xs text-blue-600 dark:text-blue-400">
+               {currentWorkspace ? `${currentWorkspace.name} klasörüne eklenecek` : 'Yüklenecek'}
+             </p>
+           </div>
+         </div>
+       )}
     </div>
   );
 }

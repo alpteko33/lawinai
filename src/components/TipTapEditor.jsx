@@ -453,14 +453,14 @@ const TipTapEditor = React.memo(({
 
   const MenuBar = React.memo(() => {
     return (
-      <div className="flex items-center space-x-1 p-2 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+      <div className="flex items-center space-x-2 p-4 bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900 border-b border-gray-100 dark:border-gray-800">
         <button
           onClick={() => editor.chain().focus().toggleBold().run()}
           disabled={!editor.can().chain().focus().toggleBold().run()}
-          className={`p-2 rounded transition-colors ${
+          className={`p-3 rounded-lg transition-colors duration-200 border ${
             editor.isActive('bold') 
-              ? 'bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-100' 
-              : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+              ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 border-purple-200/50 dark:border-purple-700/50' 
+              : 'border-transparent hover:bg-gray-200 dark:hover:bg-gray-700'
           }`}
           title="Kalın (Ctrl+B)"
         >
@@ -470,10 +470,10 @@ const TipTapEditor = React.memo(({
         <button
           onClick={() => editor.chain().focus().toggleItalic().run()}
           disabled={!editor.can().chain().focus().toggleItalic().run()}
-          className={`p-2 rounded transition-colors ${
+          className={`p-3 rounded-lg transition-colors duration-200 border ${
             editor.isActive('italic') 
-              ? 'bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-100' 
-              : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+              ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 border-purple-200/50 dark:border-purple-700/50' 
+              : 'border-transparent hover:bg-gray-200 dark:hover:bg-gray-700'
           }`}
           title="İtalik (Ctrl+I)"
         >
@@ -482,10 +482,10 @@ const TipTapEditor = React.memo(({
 
         <button
           onClick={() => editor.chain().focus().toggleUnderline().run()}
-          className={`p-2 rounded transition-colors ${
+          className={`p-3 rounded-lg transition-colors duration-200 border ${
             editor.isActive('underline') 
-              ? 'bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-100' 
-              : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+              ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 border-purple-200/50 dark:border-purple-700/50' 
+              : 'border-transparent hover:bg-gray-200 dark:hover:bg-gray-700'
           }`}
           title="Altı Çizili (Ctrl+U)"
         >
@@ -494,24 +494,24 @@ const TipTapEditor = React.memo(({
 
         <button
           onClick={() => editor.chain().focus().toggleStrike().run()}
-          className={`p-2 rounded transition-colors ${
+          className={`p-3 rounded-lg transition-colors duration-200 border ${
             editor.isActive('strike') 
-              ? 'bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-100' 
-              : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+              ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 border-purple-200/50 dark:border-purple-700/50' 
+              : 'border-transparent hover:bg-gray-200 dark:hover:bg-gray-700'
           }`}
           title="Üstü Çizili"
         >
           <Strikethrough className="w-4 h-4" />
         </button>
 
-        <div className="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-2" />
+        <div className="w-px h-6 bg-gray-200 dark:bg-gray-700 mx-2" />
 
         <button
           onClick={() => editor.chain().focus().setTextAlign('left').run()}
-          className={`p-2 rounded transition-colors ${
+          className={`p-3 rounded-lg transition-colors duration-200 border ${
             editor.isActive({ textAlign: 'left' }) 
-              ? 'bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-100' 
-              : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+              ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 border-purple-200/50 dark:border-purple-700/50' 
+              : 'border-transparent hover:bg-gray-200 dark:hover:bg-gray-700'
           }`}
           title="Sola Hizala"
         >
@@ -520,10 +520,10 @@ const TipTapEditor = React.memo(({
 
         <button
           onClick={() => editor.chain().focus().setTextAlign('center').run()}
-          className={`p-2 rounded transition-colors ${
+          className={`p-3 rounded-lg transition-colors duration-200 border ${
             editor.isActive({ textAlign: 'center' }) 
-              ? 'bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-100' 
-              : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+              ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 border-purple-200/50 dark:border-purple-700/50' 
+              : 'border-transparent hover:bg-gray-200 dark:hover:bg-gray-700'
           }`}
           title="Ortala"
         >
@@ -532,10 +532,10 @@ const TipTapEditor = React.memo(({
 
         <button
           onClick={() => editor.chain().focus().setTextAlign('right').run()}
-          className={`p-2 rounded transition-colors ${
+          className={`p-3 rounded-lg transition-colors duration-200 border ${
             editor.isActive({ textAlign: 'right' }) 
-              ? 'bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-100' 
-              : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+              ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 border-purple-200/50 dark:border-purple-700/50' 
+              : 'border-transparent hover:bg-gray-200 dark:hover:bg-gray-700'
           }`}
           title="Sağa Hizala"
         >
@@ -544,24 +544,24 @@ const TipTapEditor = React.memo(({
 
         <button
           onClick={() => editor.chain().focus().setTextAlign('justify').run()}
-          className={`p-2 rounded transition-colors ${
+          className={`p-3 rounded-lg transition-colors duration-200 border ${
             editor.isActive({ textAlign: 'justify' }) 
-              ? 'bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-100' 
-              : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+              ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 border-purple-200/50 dark:border-purple-700/50' 
+              : 'border-transparent hover:bg-gray-200 dark:hover:bg-gray-700'
           }`}
           title="İki Yana Yasla"
         >
           <AlignJustify className="w-4 h-4" />
         </button>
 
-        <div className="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-2" />
+        <div className="w-px h-6 bg-gray-200 dark:bg-gray-700 mx-2" />
 
         <button
           onClick={() => editor.chain().focus().toggleHighlight().run()}
-          className={`p-2 rounded transition-colors ${
+          className={`p-3 rounded-lg transition-colors duration-200 border ${
             editor.isActive('highlight') 
-              ? 'bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-100' 
-              : 'hover:bg-gray-200 dark:hover:bg-gray-700'
+              ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 border-purple-200/50 dark:border-purple-700/50' 
+              : 'border-transparent hover:bg-gray-200 dark:hover:bg-gray-700'
           }`}
           title="Vurgula"
         >
@@ -575,25 +575,25 @@ const TipTapEditor = React.memo(({
     <div className={`flex flex-col h-full ${className}`} style={style}>
       <MenuBar />
       
-      <div className="relative flex-1 overflow-auto">
+      <div className="relative flex-1 overflow-auto bg-white dark:bg-gray-900">
         <EditorContent 
           ref={editorRef}
           editor={editor} 
-          className="h-full p-4 focus:outline-none text-gray-900 dark:text-white tiptap-editor overflow-auto"
+          className="h-full p-6 focus:outline-none text-gray-900 dark:text-white tiptap-editor overflow-auto"
           style={{
             fontFamily: "'Times New Roman', serif",
             fontSize: '12pt',
-            lineHeight: '1.5',
+            lineHeight: '1.6',
             color: 'inherit',
           }}
         />
 
         {/* AI Processing Overlay */}
         {isAIProcessing && (
-          <div className="absolute inset-0 bg-white bg-opacity-75 dark:bg-gray-800 dark:bg-opacity-75 flex items-center justify-center z-10">
-            <div className="flex items-center space-x-2 text-blue-600 dark:text-blue-400">
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
-              <span>AI metin oluşturuyor...</span>
+          <div className="absolute inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm flex items-center justify-center z-10">
+            <div className="flex items-center space-x-3 text-blue-600 dark:text-blue-400 bg-white/90 dark:bg-gray-800/90 px-6 py-4 rounded-xl border border-blue-200/50 dark:border-blue-700/50">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+              <span className="font-medium">AI metin oluşturuyor...</span>
             </div>
           </div>
         )}

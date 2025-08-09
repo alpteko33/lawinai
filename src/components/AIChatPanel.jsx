@@ -586,7 +586,7 @@ function AIChatPanel({
   };
 
   return (
-    <div className="h-full flex flex-col bg-gray-50 dark:bg-gray-900 border-l border-gray-200 dark:border-gray-700">
+    <div className="h-full flex flex-col bg-gray-50 dark:bg-gray-900">
       {/* Header */}
       <div className="h-14 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-4">
         <div className="flex flex-col justify-center min-w-0">

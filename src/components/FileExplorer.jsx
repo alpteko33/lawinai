@@ -68,10 +68,11 @@ const FileTreeItem = ({ item, level = 0, onFileSelect, onViewFile, selectedFile 
     <div>
       <div
         className={`
-          flex items-center gap-2 py-1 cursor-pointer rounded-lg
+          group flex items-center gap-2 py-1 cursor-pointer rounded-md
           transition-all duration-200 ease-in-out
-          hover:bg-gray-50 dark:hover:bg-gray-800/50
-          ${isSelected ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200/50 dark:border-blue-700/50' : 'border border-transparent'}
+          hover:bg-white/5 hover:translate-x-[1px]
+          focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40
+          ${isSelected ? 'bg-blue-50/10 border border-blue-400/30' : 'border border-transparent'}
         `}
         style={{ 
           paddingLeft: `${level * 16}px`,
@@ -304,7 +305,7 @@ function FileExplorer({
 
   return (
     <div 
-      className={`h-full flex flex-col bg-white dark:bg-gray-900 border-r border-gray-100 dark:border-gray-800 relative ${
+      className={`h-full flex flex-col bg-white dark:bg-gray-900 relative ${
         isDragOver ? 'bg-blue-50/50 dark:bg-blue-900/10' : ''
       }`}
       onDragOver={handleDragOver}
@@ -312,8 +313,8 @@ function FileExplorer({
       onDrop={handleDrop}
     >
       {/* Header - CONSISTENT PADDING */}
-      <div className="flex-shrink-0 px-4 py-4 border-b border-gray-100 dark:border-gray-800 bg-gradient-to-r from-gray-50 to-gray-100/50 dark:from-gray-800 dark:to-gray-900/50">
-        <div className="flex items-center justify-between mb-3">
+      <div className="flex-shrink-0 px-4 py-3 border-b border-gray-100 dark:border-gray-800 bg-white/5 dark:bg-white/5 backdrop-blur-[6px]">
+      <div className="flex items-center justify-between mb-2">
           <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 tracking-tight">
             {currentWorkspace ? (currentWorkspace.name || 'Workspace') : 'Dosyalar'}
           </h2>
@@ -322,7 +323,7 @@ function FileExplorer({
                variant="ghost" 
                size="sm" 
                onClick={onFileUpload}
-               className="h-8 w-8 p-0 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg"
+              className="h-8 w-8 p-0 hover:bg-white/10 rounded-lg transition-all duration-200"
                title="Dosya Yükle"
              >
                <Upload size={15} className="text-gray-600 dark:text-gray-300" />
@@ -330,7 +331,7 @@ function FileExplorer({
              <Button 
                variant="ghost" 
                size="sm" 
-               className="h-8 w-8 p-0 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg"
+              className="h-8 w-8 p-0 hover:bg-white/10 rounded-lg transition-all duration-200"
                title="Daha Fazla"
              >
                <MoreHorizontal size={15} className="text-gray-600 dark:text-gray-300" />

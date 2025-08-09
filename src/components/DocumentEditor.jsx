@@ -197,7 +197,7 @@ function DocumentEditor({
   return (
     <div className="flex flex-col h-full bg-gray-100 dark:bg-gray-900">
       {/* Tab Bar */}
-      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+      <div className="bg-white dark:bg-gray-800 border-b border-gray-200/0 dark:border-gray-700/0">
         <div className="flex items-center px-4 py-2">
           {/* Existing Tabs */}
           <div className="flex items-center space-x-1 overflow-x-auto">
@@ -320,7 +320,7 @@ function DocumentEditor({
       </div>
 
       {/* Footer - Document Stats */}
-      <div className="h-8 bg-gray-50 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between px-4 text-xs text-gray-500 dark:text-gray-400">
+      <div className="h-8 bg-gray-50 dark:bg-gray-800 border-t border-gray-200/0 dark:border-gray-700/0 flex items-center justify-between px-4 text-xs text-gray-500 dark:text-gray-400">
         <div className="flex items-center space-x-4">
           <span>{contentStats.chars} karakter</span>
           <span>{contentStats.words} kelime</span>

@@ -7,7 +7,7 @@ import imageProcessingService from './imageProcessingService';
 class AITrainingService {
   constructor() {
     this.genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
-    this.embeddingModel = this.genAI.getGenerativeModel({ model: 'embedding-001' });
+    this.embeddingModel = this.genAI.getGenerativeModel({ model: (import.meta.env.VITE_GEMINI_EMBEDDING_MODEL || 'text-embedding-004') });
     this.trainingData = [];
     this.embeddings = [];
     this.isInitialized = false;

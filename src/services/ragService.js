@@ -3,7 +3,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 class RAGService {
   constructor() {
     this.genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
-    this.embeddingModel = this.genAI.getGenerativeModel({ model: 'embedding-001' });
+    this.embeddingModel = this.genAI.getGenerativeModel({ model: (import.meta.env.VITE_GEMINI_EMBEDDING_MODEL || 'text-embedding-004') });
     this.vectorDB = new Map(); // Basit in-memory vector store
     this.documents = [];
     this.isInitialized = false;
@@ -227,15 +227,16 @@ Lütfen:
 YANIT:`;
 
       const model = this.genAI.getGenerativeModel({ 
-        model: 'gemini-2.0-flash',
+        model: (import.meta.env.VITE_GEMINI_MODEL || 'gemini-2.5-pro'),
         generationConfig: {
-          temperature: 0.3, // Daha tutarlı yanıtlar için düşük sıcaklık
+          temperature: 0.3,
           topK: 40,
           topP: 0.95,
           maxOutputTokens: 4096,
         }
       });
       
+      // RAG için de önbellek kullanımı ileride eklenebilir; şimdilik normal generate
       const result = await model.generateContent(prompt);
       const response = await result.response;
       

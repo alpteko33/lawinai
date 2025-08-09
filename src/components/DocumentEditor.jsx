@@ -291,7 +291,11 @@ function DocumentEditor({
       <div className="flex-1 overflow-auto">
         {isPDFTab ? (
           // PDF Viewer Tab
-          <FileViewer file={activeTab.data.file} />
+          <FileViewer
+            fileUrl={activeTab.data.fileUrl}
+            fileName={activeTab.data.file?.name || activeTab.title}
+            fileType={activeTab.data.fileType}
+          />
         ) : isDocumentTab ? (
           // Document Editor Tab with TipTap
           <div className="h-full bg-white dark:bg-gray-800">

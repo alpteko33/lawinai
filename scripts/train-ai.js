@@ -213,7 +213,7 @@ function createTrainingConfig(trainingData) {
       name: 'lawinai-legal-assistant',
       version: '1.0.0',
       description: 'Türk hukuk sistemi için eğitilmiş AI asistan',
-      baseModel: 'gemini-2.0-flash'
+      baseModel: process.env.VITE_GEMINI_MODEL || 'gemini-2.5-pro'
     },
     training: {
       totalDocuments: trainingData.metadata.totalDocuments,
@@ -221,7 +221,7 @@ function createTrainingConfig(trainingData) {
       totalEmbeddings: trainingData.metadata.totalEmbeddings,
       embeddingDimension: trainingData.trainingData[0]?.embedding?.length || 0,
       chunkSize: 1000,
-      embeddingModel: 'embedding-001'
+      embeddingModel: process.env.VITE_GEMINI_EMBEDDING_MODEL || 'text-embedding-004'
     },
     data: {
       inputFiles: ['training-data-processed.json', 'embeddings.json'],

@@ -4,7 +4,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 class ImageProcessingService {
   constructor() {
     this.genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
-    this.model = this.genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+    this.model = this.genAI.getGenerativeModel({ model: (import.meta.env.VITE_GEMINI_MODEL || 'gemini-2.5-pro') });
     this.supportedFormats = ['jpg', 'jpeg', 'png', 'tiff', 'tif', 'webp', 'bmp'];
   }
 

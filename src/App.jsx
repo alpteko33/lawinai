@@ -509,7 +509,7 @@ function App() {
     setRejectedChanges(new Set());
     
     // Clear Gemini chat history and reload with historical messages
-    geminiService.clearChat();
+        geminiService.clearChat();
   };
 
   // File management functions
@@ -669,7 +669,7 @@ function App() {
     
     // Supported file types
     const supportedTypes = [
-      'pdf', 
+      'pdf', 'docx', 'doc',
       'jpg', 'jpeg', 'png', 'gif', 'webp',  // Standard images
       'tiff', 'tif'  // TIFF images
     ];
@@ -691,7 +691,7 @@ function App() {
       // Create file viewer tab
       const fileTab = {
         id: `file-${file.id}`,
-        type: 'pdf', // Keep as 'pdf' for now to reuse existing tab logic
+        type: 'pdf', // Mevcut sekme mantığını yeniden kullanıyoruz
         title: file.name,
         data: {
           fileUrl: fileUrl,
@@ -900,16 +900,18 @@ function App() {
         setStreamingToEditor(false);
       };
       
-      // Start streaming with attachments
+      // Start streaming with attachments (geçmişi aktar)
       await geminiService.sendMessageStream(
         message,
         attachments,
-        onChunk
+        onChunk,
+        true,
+        chatMessages // geçmiş: önceki mesajlar (gönderilen kullanıcı mesajı hariç)
       ).then(response => {
         onComplete({
           content: response.text,
           timestamp: new Date().toISOString(),
-          model: 'gemini-2.0-flash'
+          model: (import.meta.env.VITE_GEMINI_MODEL || 'gemini-2.5-pro')
         });
       }).catch(onError);
       

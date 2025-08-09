@@ -2,9 +2,10 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import udfService from './udfService';
 import ragService from './ragService';
 import aiTrainingService from './aiTrainingService';
+import cacheService from './cacheService';
 
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-const MODEL_NAME = import.meta.env.VITE_GEMINI_MODEL || 'gemini-2.0-flash';
+const MODEL_NAME = import.meta.env.VITE_GEMINI_MODEL || 'gemini-2.5-pro';
 
 if (!API_KEY) {
   console.error('VITE_GEMINI_API_KEY is not defined in environment variables');
@@ -47,6 +48,7 @@ class GeminiService {
     });
     this.chat = null;
     this.isInitialized = false;
+    this.conversationId = null;
   }
 
   // Desteklenen dosya türlerini kontrol et
@@ -160,15 +162,72 @@ class GeminiService {
     }
   }
 
-  // Chat'i başlat
-  async startChat() {
+  // Geçmişteki son dilekçe taslağını çıkar
+  getLastDocumentFromHistory(historyMessages = []) {
     try {
+      if (!Array.isArray(historyMessages)) return null;
+      for (let i = historyMessages.length - 1; i >= 0; i--) {
+        const m = historyMessages[i];
+        if (!m || !m.content) continue;
+        const content = m.content;
+        const match = content.match(/```dilekce\n([\s\S]*?)(?:\n```|$)/);
+        if (match && match[1]) {
+          return match[1].trim();
+        }
+      }
+      // Fallback: son asistan mesajının tamamını kullan (kısaltılmış)
+      for (let i = historyMessages.length - 1; i >= 0; i--) {
+        const m = historyMessages[i];
+        if (m && m.role === 'assistant' && m.content) {
+          const text = String(m.content);
+          // Basit heuristik: başlıklar veya mahkeme adları
+          const startIdx = text.search(/(SULH HUKUK MAHKEMESI|SULH HUKUK MAHKEMESİ|DİLEKÇE TASLAĞI|DAVACI|DAVALI|KONU|AÇIKLAMALAR|SONUÇ VE İSTEM)/i);
+          if (startIdx >= 0) {
+            return text.substring(startIdx, startIdx + 30000);
+          }
+          // Aksi halde ilk 30k karakteri ver
+          return text.substring(0, 30000);
+        }
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // Mesaj bir takip/güncelleme talebi mi?
+  isFollowUpEditRequest(message) {
+    if (!message) return false;
+    const s = message.toLowerCase();
+    const keywords = [
+      'kaldığın yerden', 'devam et', 'aynı dilekçe', 'güncelle', 'değiştir', 'ekle', 'çıkar', 'revize',
+      'continue', 'update', 'modify', 'revise', 'append', 'edit'
+    ];
+    return keywords.some(k => s.includes(k));
+  }
+
+  // Chat'i başlat
+  async startChat(historyMessages = []) {
+    try {
+      // UI mesajlarını Gemini chat geçmiş formatına dönüştür
+      const mappedHistory = Array.isArray(historyMessages)
+        ? historyMessages
+            .filter(m => m && m.content && (m.role === 'user' || m.role === 'assistant'))
+            .map(m => ({
+              role: m.role === 'user' ? 'user' : 'model',
+              parts: [{ text: m.content }]
+            }))
+        : [];
+
       this.chat = this.model.startChat({
-        history: [],
+        history: mappedHistory,
         generationConfig,
         safetySettings,
       });
       this.isInitialized = true;
+      if (!this.conversationId) {
+        this.conversationId = cacheService.getOrCreateConversationId(null);
+      }
       return this.chat;
     } catch (error) {
       console.error('Error starting chat:', error);
@@ -176,12 +235,17 @@ class GeminiService {
     }
   }
 
+  // Mevcut chat yoksa, verilen geçmiş ile başlat
+  async ensureChat(historyMessages = []) {
+    if (!this.isInitialized || !this.chat) {
+      await this.startChat(historyMessages);
+    }
+  }
+
   // Mesaj gönder (dosya desteği ile)
-  async sendMessage(message, attachments = [], useRAG = true) {
+  async sendMessage(message, attachments = [], useRAG = true, historyMessages = null) {
     try {
-      if (!this.isInitialized) {
-        await this.startChat();
-      }
+      await this.ensureChat(historyMessages || []);
 
       // EĞİTİM VERİLERİNİ ENTEGRE ET
       const trainingData = aiTrainingService.trainingData;
@@ -240,6 +304,12 @@ class GeminiService {
         if (isDocumentRequest) {
           finalMessage = `${enhancedMessage}\n\nLütfen yanıtınızı aşağıdaki formatta verin:\n\n1. Önce kısa bir açıklama yapın\n2. Sonra dilekçe metnini \`\`\`dilekce ve \`\`\` etiketleri arasında verin\n\nÖrnek format:\n\nSize yardımcı olmaktan memnuniyet duyarım. İşte hazırladığım dilekçe:\n\n\`\`\`dilekce\n[Burada dilekçe metnini yazın]\n\`\`\`\n\nNot: Dilekçe metni Türk hukuk sistemi standartlarına uygun olmalıdır.`;
         }
+
+        // Eğer bu bir takip/güncelleme isteği ise, geçmişteki son dilekçeyi ek bağlam olarak ver
+        const lastDoc = this.isFollowUpEditRequest(message) ? this.getLastDocumentFromHistory(historyMessages || []) : null;
+        if (lastDoc) {
+          finalMessage = `Aşağıdaki mevcut dilekçeyi verilen talimatlara göre GÜNCELLE. Yapılması istenen değişiklikleri uygula ve TAM GÜNCELLENMİŞ metni ver. Ek açıklama ekleme.\n\nTalimatlar:\n${enhancedMessage}\n\nMevcut Dilekçe (GÜNCELLENECEK):\n\n\`\`\`dilekce\n${lastDoc.substring(0, 30000)}\n\`\`\`\n`;
+        }
         
         parts.push({
           text: finalMessage
@@ -265,9 +335,95 @@ class GeminiService {
         throw new Error('Gönderilecek içerik bulunamadı');
       }
 
+      // 1) Kısa süreli bağlam önbelleği (cached content) kullanmayı dene
+      // Conversation kimliği: mevcut geçmişten türet; yoksa oluştur
+      const conversationId = this.conversationId || cacheService.getOrCreateConversationId(
+        (historyMessages && historyMessages.length > 0 && `conv_${historyMessages[0].id || historyMessages[0].timestamp || ''}`) || null
+      );
+      this.conversationId = conversationId;
+
+      // Önbelleği henüz oluşturmadıysak, bağlam olarak dosyaları ve eğitim verisi özetini ekleyerek oluştur
+      if (!cacheService.getCacheEntry(conversationId)) {
+        const contextParts = [];
+        // Dosyaları bağlam olarak ekle (metin ya da inlineData base64 gönderimi)
+        for (const p of parts) {
+          if (p.text) {
+            // Çok uzunluğu sınırlı tut (örnek: ilk 8000 karakter) - 2k token minimumu hedefle
+            contextParts.push({ text: p.text.substring(0, 8000) });
+          } else if (p.inlineData && p.inlineData.data && p.inlineData.mimeType) {
+            // Artık görsel/PDF gibi inlineData parçalarını da kısa süreli cache'e koyuyoruz
+            contextParts.push({ inlineData: { data: p.inlineData.data, mimeType: p.inlineData.mimeType } });
+          }
+        }
+
+        // UI'dan gelen ekler varsa, onları da bağlama dahil et
+        if (attachments && attachments.length > 0) {
+          for (const file of attachments) {
+            try {
+              if (this.isSupportedFileType(file.type)) {
+                const filePart = await this.fileToGenerativePart(file);
+                if (filePart.text) {
+                  contextParts.push({ text: filePart.text.substring(0, 12000) });
+                } else if (filePart.inlineData) {
+                  contextParts.push({ inlineData: { data: filePart.inlineData.data, mimeType: filePart.inlineData.mimeType } });
+                }
+              }
+            } catch (e) {
+              console.warn('Cache için dosya eklenemedi:', file?.name, e?.message || e);
+            }
+          }
+        }
+
+        // Sistem yönergesi: hukuki/dilekçe üretim yaklaşımı
+        const systemInstruction = 'Türk hukuk sistemi bağlamında uzman yardımcı olarak yanıt ver; bağlamdaki bilgileri önceliklendir.';
+        await cacheService.createCachedContent({
+          conversationId,
+          contextParts,
+          systemInstruction,
+        });
+      }
+
+      // Önbellekle generate denemesi (yalnızca metin içerik ile)
+      const cacheTry = await cacheService.generateWithCache({
+        conversationId,
+        userText: parts.find(p => p.text)?.text || '',
+        generationConfig,
+        safetySettings,
+      });
+
+      if (cacheTry && cacheTry.text) {
+        // Yanıtı da kısa süreli cache'e yaz (gelecek turlar için)
+        try {
+          const usedText = (parts.find(p => p.text)?.text || '').substring(0, 8000);
+          const answerText = cacheTry.text.substring(0, 16000);
+          await cacheService.createCachedContent({
+            conversationId,
+            contextParts: [{ text: usedText }, { text: answerText }],
+            systemInstruction: 'Türk hukuk sistemi bağlamında uzman yardımcı olarak yanıt ver; bağlamdaki bilgileri önceliklendir.',
+          });
+        } catch (_) {}
+
+        return {
+          text: cacheTry.text,
+          usageMetadata: cacheTry.usageMetadata,
+        };
+      }
+
+      // 2) Önbellek başarısızsa normal yol
       const result = await this.chat.sendMessage(parts);
       const response = await result.response;
       
+      // Yanıtı da kısa süreli cache'e yaz
+      try {
+        const usedText = (parts.find(p => p.text)?.text || '').substring(0, 8000);
+        const answerText = (response.text && response.text()) ? response.text().substring(0, 16000) : '';
+        await cacheService.createCachedContent({
+          conversationId,
+          contextParts: [{ text: usedText }, { text: answerText }],
+          systemInstruction: 'Türk hukuk sistemi bağlamında uzman yardımcı olarak yanıt ver; bağlamdaki bilgileri önceliklendir.',
+        });
+      } catch (_) {}
+
       return {
         text: response.text(),
         usageMetadata: response.usageMetadata
@@ -291,7 +447,7 @@ class GeminiService {
   }
 
   // RAG ile mesaj gönder
-  async sendMessageWithRAG(message, attachments = []) {
+  async sendMessageWithRAG(message, attachments = [], historyMessages = []) {
     try {
       console.log('RAG ile mesaj gönderiliyor...');
       
@@ -354,15 +510,32 @@ class GeminiService {
       const finalResponse = ragResponse.response + enhancedRAGResponse;
       
       // RAG yanıtını chat'e gönder (opsiyonel - geçmiş için)
-      if (!this.chat) {
-        await this.startChat();
-      }
+      await this.ensureChat(historyMessages || []);
       
       const result = await this.chat.sendMessage({
         text: `Kullanıcı sorusu: ${message}\n\nRAG yanıtı: ${finalResponse}`
       });
       
       const response = await result.response;
+
+      // RAG bağlamını kısa süreli önbelleğe al (sonraki mesajlar için maliyeti düşürür)
+      try {
+        const conversationId = this.conversationId || cacheService.getOrCreateConversationId(
+          (historyMessages && historyMessages.length > 0 && `conv_${historyMessages[0].id || historyMessages[0].timestamp || ''}`) || null
+        );
+        this.conversationId = conversationId;
+        const contextParts = [
+          { text: `RAG Bağlamı:\n${finalResponse.substring(0, 16000)}` },
+        ];
+        const systemInstruction = 'Türk hukuk sistemi bağlamında uzman yardımcı olarak yanıt ver; RAG bağlamını önceliklendir.';
+        await cacheService.createCachedContent({
+          conversationId,
+          contextParts,
+          systemInstruction,
+        });
+      } catch (e) {
+        console.warn('RAG cache oluşturulamadı:', e?.message || e);
+      }
       
       return {
         text: finalResponse,
@@ -379,11 +552,9 @@ class GeminiService {
   }
 
   // Streaming mesaj gönder
-  async sendMessageStream(message, attachments = [], onChunk, useRAG = true) {
+  async sendMessageStream(message, attachments = [], onChunk, useRAG = true, historyMessages = []) {
     try {
-      if (!this.isInitialized) {
-        await this.startChat();
-      }
+      await this.ensureChat(historyMessages || []);
 
       // EĞİTİM VERİLERİNİ ENTEGRE ET (Streaming için)
       const trainingData = aiTrainingService.trainingData;
@@ -428,7 +599,7 @@ class GeminiService {
       // RAG modu aktifse ve doküman varsa RAG kullan
       if (useRAG && attachments && attachments.length > 0) {
         console.log('RAG streaming modu ile mesaj gönderiliyor...');
-        return await this.sendMessageStreamWithRAG(enhancedMessage, attachments, onChunk);
+        return await this.sendMessageStreamWithRAG(enhancedMessage, attachments, onChunk, historyMessages || []);
       }
 
       const parts = [];
@@ -441,6 +612,12 @@ class GeminiService {
         
         if (isDocumentRequest) {
           finalMessage = `${enhancedMessage}\n\nLütfen yanıtınızı aşağıdaki formatta verin:\n\n1. Önce kısa bir açıklama yapın\n2. Sonra dilekçe metnini \`\`\`dilekce ve \`\`\` etiketleri arasında verin\n\nÖrnek format:\n\nSize yardımcı olmaktan memnuniyet duyarım. İşte hazırladığım dilekçe:\n\n\`\`\`dilekce\n[Burada dilekçe metnini yazın]\n\`\`\`\n\nNot: Dilekçe metni Türk hukuk sistemi standartlarına uygun olmalıdır.`;
+        }
+
+        // Takip/güncelleme isteği ise, geçmiş son dilekçeyi bağlama ekle
+        const lastDoc = this.isFollowUpEditRequest(message) ? this.getLastDocumentFromHistory(historyMessages || []) : null;
+        if (lastDoc) {
+          finalMessage = `Aşağıdaki mevcut dilekçeyi verilen talimatlara göre GÜNCELLE. Yapılması istenen değişiklikleri uygula ve TAM GÜNCELLENMİŞ metni ver. Ek açıklama ekleme.\n\nTalimatlar:\n${enhancedMessage}\n\nMevcut Dilekçe (GÜNCELLENECEK):\n\n\`\`\`dilekce\n${lastDoc.substring(0, 30000)}\n\`\`\`\n`;
         }
         
         parts.push({
@@ -466,6 +643,65 @@ class GeminiService {
         throw new Error('Gönderilecek içerik bulunamadı');
       }
 
+      // Kısa süreli bağlam önbelleği: Bu çağrı için stream'i bozmayız, ancak mümkünse cache ile tek atım denemesi yaparız
+      try {
+        const conversationId = this.conversationId || cacheService.getOrCreateConversationId(
+          (historyMessages && historyMessages.length > 0 && `conv_${historyMessages[0].id || historyMessages[0].timestamp || ''}`) || null
+        );
+        this.conversationId = conversationId;
+        if (!cacheService.getCacheEntry(conversationId)) {
+          const contextText = parts.find(p => p.text)?.text || '';
+          const contextParts = contextText ? [{ text: contextText.substring(0, 12000) }] : [];
+          // UI eklerini de bağlama dahil et
+          if (attachments && attachments.length > 0) {
+            for (const file of attachments) {
+              try {
+                if (this.isSupportedFileType(file.type)) {
+                  const filePart = await this.fileToGenerativePart(file);
+                  if (filePart.text) {
+                    contextParts.push({ text: filePart.text.substring(0, 12000) });
+                  } else if (filePart.inlineData) {
+                    contextParts.push({ inlineData: { data: filePart.inlineData.data, mimeType: filePart.inlineData.mimeType } });
+                  }
+                }
+              } catch (e) {
+                console.warn('Streaming cache için dosya eklenemedi:', file?.name, e?.message || e);
+              }
+            }
+          }
+          if (contextParts.length > 0) {
+            const systemInstruction = 'Türk hukuk sistemi bağlamında uzman yardımcı olarak yanıt ver; bağlamdaki bilgileri önceliklendir.';
+            await cacheService.createCachedContent({
+              conversationId,
+              contextParts,
+              systemInstruction,
+            });
+          }
+        }
+
+        // Cache ile tek sefer generate denemesi (stream simülasyonu)
+        const cacheTry = await cacheService.generateWithCache({
+          conversationId,
+          userText: parts.find(p => p.text)?.text || '',
+          generationConfig,
+          safetySettings,
+        });
+
+        if (cacheTry && cacheTry.text) {
+          if (onChunk) {
+            onChunk(cacheTry.text, cacheTry.text);
+          }
+          return {
+            text: cacheTry.text,
+            usageMetadata: cacheTry.usageMetadata,
+          };
+        }
+      } catch (e) {
+        console.warn('Streaming için önbellek oluşturulamadı:', e?.message || e);
+      }
+
+      // Streaming için önbellek denemesi: API, stream + cache birlikte resmi olarak sunulmadığından
+      // burada doğrudan stream'e devam ediyoruz.
       const result = await this.chat.sendMessageStream(parts);
       let fullText = '';
       
@@ -478,6 +714,16 @@ class GeminiService {
         }
       }
       
+      // Streaming sonrası yanıtı da kısa süreli cache'e yaz
+      try {
+        const usedText = (parts.find(p => p.text)?.text || '').substring(0, 8000);
+        await cacheService.createCachedContent({
+          conversationId: this.conversationId,
+          contextParts: [{ text: usedText }, { text: fullText.substring(0, 16000) }],
+          systemInstruction: 'Türk hukuk sistemi bağlamında uzman yardımcı olarak yanıt ver; bağlamdaki bilgileri önceliklendir.',
+        });
+      } catch (_) {}
+
       return {
         text: fullText,
         usageMetadata: result.response.usageMetadata
@@ -500,7 +746,7 @@ class GeminiService {
   }
 
   // RAG ile streaming mesaj gönder
-  async sendMessageStreamWithRAG(message, attachments = [], onChunk) {
+  async sendMessageStreamWithRAG(message, attachments = [], onChunk, historyMessages = []) {
     try {
       console.log('RAG streaming ile mesaj gönderiliyor...');
       
@@ -562,7 +808,7 @@ class GeminiService {
       // Eğitim verilerini RAG yanıtına ekle
       const finalResponseText = ragResponse.response + enhancedRAGResponse;
       
-      // RAG yanıtını streaming olarak gönder
+      // RAG yanıtını streaming olarak gönder (context için geçmişi koru)
       let currentText = '';
       
       // Karakter karakter streaming simülasyonu
@@ -593,6 +839,13 @@ class GeminiService {
   clearChat() {
     this.chat = null;
     this.isInitialized = false;
+    try {
+      // Kısa süreli bağlam önbelleğini temizle
+      cacheService.clearAll();
+    } catch (_) {
+      // sessizce geç
+    }
+    this.conversationId = null;
   }
 
   // Chat geçmişini al

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Tiff from 'tiff.js';
+import mammoth from 'mammoth/mammoth.browser';
 
 const FileViewer = ({ fileUrl, fileName, fileType }) => {
   const [loading, setLoading] = useState(true);
@@ -10,6 +11,7 @@ const FileViewer = ({ fileUrl, fileName, fileType }) => {
   // Dosya tipini belirle
   const normalizedFileType = fileType?.toLowerCase() || '';
   const isPDF = normalizedFileType === 'pdf';
+  const isDOCX = normalizedFileType === 'docx';
   const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(normalizedFileType);
   const isTIFF = ['tiff', 'tif'].includes(normalizedFileType);
 
@@ -69,6 +71,46 @@ const FileViewer = ({ fileUrl, fileName, fileType }) => {
     setError('PDF yüklenemedi');
   };
 
+  // DOCX/Word dosyaları için HTML'e dönüştürme
+  const [docxHtml, setDocxHtml] = useState('');
+  useEffect(() => {
+    const convertDocxToHtml = async () => {
+      if (!isDOCX || !fileUrl) return;
+      try {
+        setLoading(true);
+        setError(null);
+
+        let arrayBuffer;
+        if (typeof window !== 'undefined' && window.electronAPI && fileUrl.startsWith('file://')) {
+          // Electron: yerel dosyayı base64 olarak oku ve ArrayBuffer'a çevir
+          const path = fileUrl.replace('file://', '');
+          const base64 = await window.electronAPI.readFileAsBase64(path);
+          const binaryString = atob(base64);
+          const len = binaryString.length;
+          const bytes = new Uint8Array(len);
+          for (let i = 0; i < len; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          arrayBuffer = bytes.buffer;
+        } else {
+          // Web: blob URL üzerinden fetch
+          const response = await fetch(fileUrl);
+          arrayBuffer = await response.arrayBuffer();
+        }
+
+        const { value: html } = await mammoth.convertToHtml({ arrayBuffer });
+        setDocxHtml(html);
+        setLoading(false);
+      } catch (err) {
+        console.error('DOCX dönüştürme hatası:', err);
+        setError('DOCX dosyası işlenemedi: ' + err.message);
+        setLoading(false);
+      }
+    };
+
+    convertDocxToHtml();
+  }, [isDOCX, fileUrl]);
+
   const getFileTypeDisplay = () => {
     if (isPDF) return 'PDF Belgesi';
     if (isImage) return 'Resim Dosyası';
@@ -86,6 +128,14 @@ const FileViewer = ({ fileUrl, fileName, fileType }) => {
           onError={handleIframeError}
           title={fileName || 'PDF Viewer'}
         />
+      );
+    }
+
+    if (isDOCX) {
+      return (
+        <div className="h-full overflow-auto bg-white dark:bg-gray-800 p-6 text-gray-900 dark:text-gray-100">
+          <div dangerouslySetInnerHTML={{ __html: docxHtml }} />
+        </div>
       );
     }
 
@@ -138,7 +188,7 @@ const FileViewer = ({ fileUrl, fileName, fileType }) => {
   return (
     <div className="h-full flex flex-col bg-gray-50 dark:bg-gray-900">
       {/* File Toolbar - PDF dosyaları için gizli */}
-      {!isPDF && (
+       {!isPDF && !isDOCX && (
         <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
@@ -176,7 +226,7 @@ const FileViewer = ({ fileUrl, fileName, fileType }) => {
             <div className="text-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
               <p className="text-gray-600">
-                {isTIFF ? 'TIFF dosyası işleniyor...' : isPDF ? 'PDF yükleniyor...' : 'Resim yükleniyor...'}
+                {isTIFF ? 'TIFF dosyası işleniyor...' : isPDF ? 'PDF yükleniyor...' : isDOCX ? 'Word (DOCX) işleniyor...' : 'Resim yükleniyor...'}
               </p>
             </div>
           </div>

@@ -55,6 +55,12 @@ LawInAI, Türk avukatlar için geliştirilmiş yapay zeka destekli hukuki asista
 - AI size profesyonel dilekçe hazırlar
 - Markdown formatında indirebilirsiniz
 
+### 4. Inline Autocomplete (Ghost Text)
+
+- Editörde yazarken 200ms sonra bağlama göre öneri görünür.
+- Tab ile öneriyi kabul eder, Esc ile iptal edersiniz. Yazmaya devam edince otomatik iptal olur.
+- Öneri çok satırlı ise yalnızca imleç satır sonunda boşsa gösterilir.
+
 ## 🛠️ Geliştirme
 
 ### VS Code Kurulumu

@@ -195,6 +195,13 @@
   align-items: center;
 }
 
+/* Inline Autocomplete Ghost Text */
+.ghost-text {
+  opacity: .45;
+  color: var(--muted-foreground, #9aa0a6);
+  pointer-events: none;
+}
+
 .react-pdf__Page__canvas {
   max-width: 100%;
   height: auto !important;
@@ -399,6 +406,60 @@ span[data-diff-type="pending"] {
   color: #93c5fd !important;
   border-color: #2563eb !important;
   box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.4) !important;
+}
+
+/* Paragraph-level DIFF styles */
+.tiptap-editor .ProseMirror p[data-diff-type="paragraph-insert"],
+.tiptap-editor p[data-diff-type="paragraph-insert"],
+p[data-diff-type="paragraph-insert"] {
+  background-color: #ecfdf5 !important; /* emerald-50 */
+  border-left: 4px solid #10b981 !important; /* emerald-500 */
+  padding: 6px 8px !important;
+  margin: 6px 0 !important;
+}
+
+.tiptap-editor .ProseMirror p[data-diff-type="paragraph-delete"],
+.tiptap-editor p[data-diff-type="paragraph-delete"],
+p[data-diff-type="paragraph-delete"] {
+  background-color: #fef2f2 !important; /* red-50 */
+  border-left: 4px solid #ef4444 !important; /* red-500 */
+  padding: 6px 8px !important;
+  margin: 6px 0 !important;
+  text-decoration: line-through !important;
+}
+
+.tiptap-editor .ProseMirror p[data-diff-type="pending"],
+.tiptap-editor p[data-diff-type="pending"],
+p[data-diff-type="pending"] {
+  background-color: #eff6ff !important; /* blue-50 */
+  border-left: 4px solid #3b82f6 !important; /* blue-500 */
+  padding: 6px 8px !important;
+  margin: 6px 0 !important;
+}
+
+/* Dark mode overrides for paragraph-level diffs */
+.dark .tiptap-editor .ProseMirror p[data-diff-type="paragraph-insert"],
+.dark .tiptap-editor p[data-diff-type="paragraph-insert"],
+.dark p[data-diff-type="paragraph-insert"] {
+  background-color: #14532d !important; /* dark emerald */
+  border-left-color: #16a34a !important; /* emerald-600 */
+  color: #bbf7d0 !important; /* emerald-200 */
+}
+
+.dark .tiptap-editor .ProseMirror p[data-diff-type="paragraph-delete"],
+.dark .tiptap-editor p[data-diff-type="paragraph-delete"],
+.dark p[data-diff-type="paragraph-delete"] {
+  background-color: #7f1d1d !important; /* dark red */
+  border-left-color: #dc2626 !important; /* red-600 */
+  color: #fca5a5 !important; /* red-300 */
+}
+
+.dark .tiptap-editor .ProseMirror p[data-diff-type="pending"],
+.dark .tiptap-editor p[data-diff-type="pending"],
+.dark p[data-diff-type="pending"] {
+  background-color: #1e3a8a !important; /* dark blue */
+  border-left-color: #2563eb !important; /* blue-600 */
+  color: #93c5fd !important; /* blue-300 */
 }
 
 /* Animation for pending content */

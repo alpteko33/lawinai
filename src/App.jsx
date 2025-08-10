@@ -19,8 +19,12 @@ import {
   ResizablePanel,
   ResizableHandle,
 } from '@/components/ui/resizable';
+import { useDispatch, useSelector } from 'react-redux';
+import { setSession, selectMode, setContextPercentage } from '@/renderer/redux/store';
 
 function App() {
+  const dispatch = useDispatch();
+  const mode = useSelector(selectMode);
   const [activeView, setActiveView] = useState('login'); // login, welcome, editor, settings, training
   const [previousView, setPreviousView] = useState('login'); // Önceki view'ı hatırlamak için
   const [darkMode, setDarkMode] = useState(true); // New dark mode state
@@ -80,6 +84,12 @@ function App() {
   const [streamingContent, setStreamingContent] = useState('');
   const [pendingContent, setPendingContent] = useState(''); // Content waiting for approval (green in editor)
   const [streamingToEditor, setStreamingToEditor] = useState(false); // Is currently writing to editor
+
+  // Ephemeral chat progress & optional thoughts
+  const [chatProgress, setChatProgress] = useState('');
+  const [chatThoughts, setChatThoughts] = useState('');
+  // Persistent thinking steps for current answer
+  const [currentThinkingSteps, setCurrentThinkingSteps] = useState([]);
 
   // New AI Text State Management - Enhanced diff system
   const [aiTextState, setAiTextState] = useState(null); // 'pending', 'changes', null
@@ -163,6 +173,26 @@ function App() {
 
     // Small delay for smooth loading transition
     setTimeout(initializeApp, 1000);
+  }, []);
+
+  // En son oturumu getir (uygulama açılışında)
+  useEffect(() => {
+    (async () => {
+      try {
+        const list = await window.electronAPI?.history?.list({ limit: 1, offset: 0 });
+        if (Array.isArray(list) && list.length > 0) {
+          const latest = list[0];
+          const session = await window.electronAPI?.history?.load(latest.id);
+          if (session?.messages) {
+            setChatMessages(session.messages);
+            setChatTitle(session.title);
+            dispatch(setSession(session));
+          }
+        }
+      } catch (e) {
+        console.warn('initial history load error', e);
+      }
+    })();
   }, []);
 
   // Document handlers
@@ -743,6 +773,7 @@ function App() {
     setIsAITyping(true);
     setIsStreaming(true);
     setStreamingContent('');
+    setCurrentThinkingSteps([]);
     
     try {
       // Streaming response handlers
@@ -750,6 +781,24 @@ function App() {
       let isDocumentContent = false;
       let documentContent = '';
       
+      const onProgress = (status) => {
+        setChatProgress(status || '');
+        // Persist step (de-dupe consecutive)
+        setCurrentThinkingSteps(prev => {
+          if (!status) return prev;
+          const last = prev[prev.length - 1];
+          if (last && last.type === 'status' && last.text === status) return prev;
+          return [...prev, { type: 'status', text: status, ts: Date.now() }];
+        });
+      };
+
+      const onThought = (thoughtText, isFinal = false) => {
+        setChatThoughts(prev => {
+          const base = (prev || '') + (thoughtText || '');
+          return base.length > 2000 ? base.slice(-2000) : base;
+        });
+      };
+
       const onChunk = (chunkText, fullContent) => {
         accumulatedContent = fullContent;
         setStreamingContent(fullContent);
@@ -773,7 +822,7 @@ function App() {
         }
       };
       
-      const onComplete = (response) => {
+      const onComplete = async (response) => {
         console.log('🚀 AI Response Complete - DEBUG START');
         
         // Extract document content if present
@@ -823,34 +872,74 @@ function App() {
             setAiTextState('changes');
             setOriginalText(currentContent);
             
-            // Yeni diff sistemi ile değişiklikleri hesapla
-            const changeId = textFormattingService.addPendingChange(
-              currentContent, 
-              formattedContent, 
-              'replace'
-            );
+            // AI yanıtının kısmi güncelleme mi tam dilekçe mi olduğunu kontrol et
+            const isPartialUpdate = textFormattingService.isPartialUpdate(currentContent, formattedContent);
+            console.log('🔍 Is partial update:', isPartialUpdate);
             
-            const pendingChange = textFormattingService.getPendingChange(changeId);
-            if (pendingChange) {
-              console.log('📊 Pending changes:', pendingChange.changes);
-              setPendingChanges(pendingChange.changes);
+            if (isPartialUpdate) {
+              // Kısmi güncelleme: AI'nin döndürdüğü paragrafı mevcut dilekçeye merge et
+              console.log('📝 Processing partial update');
+              const mergedContent = textFormattingService.mergePartialUpdate(currentContent, formattedContent);
               
-              // Document'ı diff highlight'larıyla güncelle
-              const diffResult = textFormattingService.getPendingTextWithHighlights(currentContent, formattedContent);
-              console.log('🔄 Diff highlighted content:', diffResult.highlightedText.substring(0, 100) + '...');
+              // Diff sistemini kullanarak değişiklikleri hesapla
+              const changeId = textFormattingService.addPendingChange(
+                currentContent, 
+                mergedContent, 
+                'partial'
+              );
               
-              setCurrentDocument(prev => ({
-                ...prev,
-                content: diffResult.highlightedText, // Content with diff markers
-                hasChanges: true
-              }));
+              const pendingChange = textFormattingService.getPendingChange(changeId);
+              if (pendingChange) {
+                console.log('📊 Partial update changes:', pendingChange.changes);
+                setPendingChanges(pendingChange.changes);
+                
+                // Document'ı diff highlight'larıyla güncelle
+                const diffResult = textFormattingService.getPendingTextWithHighlights(currentContent, mergedContent);
+                console.log('🔄 Merged diff highlighted content:', diffResult.highlightedText.substring(0, 100) + '...');
+                
+                setCurrentDocument(prev => ({
+                  ...prev,
+                  content: diffResult.highlightedText, // Content with diff markers
+                  hasChanges: true
+                }));
+                
+                // Update the active tab
+                setOpenTabs(prev => prev.map(tab => 
+                  tab.id === activeTabId 
+                    ? { ...tab, data: { ...tab.data, content: diffResult.highlightedText, hasChanges: true } }
+                    : tab
+                ));
+              }
+            } else {
+              // Tam güncelleme: Mevcut sistem
+              const changeId = textFormattingService.addPendingChange(
+                currentContent, 
+                formattedContent, 
+                'replace'
+              );
               
-              // Update the active tab
-              setOpenTabs(prev => prev.map(tab => 
-                tab.id === activeTabId 
-                  ? { ...tab, data: { ...tab.data, content: diffResult.highlightedText, hasChanges: true } }
-                  : tab
-              ));
+              const pendingChange = textFormattingService.getPendingChange(changeId);
+              if (pendingChange) {
+                console.log('📊 Full replacement changes:', pendingChange.changes);
+                setPendingChanges(pendingChange.changes);
+                
+                // Document'ı diff highlight'larıyla güncelle
+                const diffResult = textFormattingService.getPendingTextWithHighlights(currentContent, formattedContent);
+                console.log('🔄 Full diff highlighted content:', diffResult.highlightedText.substring(0, 100) + '...');
+                
+                setCurrentDocument(prev => ({
+                  ...prev,
+                  content: diffResult.highlightedText, // Content with diff markers
+                  hasChanges: true
+                }));
+                
+                // Update the active tab
+                setOpenTabs(prev => prev.map(tab => 
+                  tab.id === activeTabId 
+                    ? { ...tab, data: { ...tab.data, content: diffResult.highlightedText, hasChanges: true } }
+                    : tab
+                ));
+              }
             }
           }
           
@@ -865,16 +954,53 @@ function App() {
           content: response.content,
           role: 'assistant',
           timestamp: response.timestamp,
-          model: response.model
+          model: response.model,
+          thinkingSteps: [
+            ...currentThinkingSteps,
+            ...(chatThoughts ? [{ type: 'thought', text: chatThoughts, ts: Date.now() }] : [])
+          ]
         };
         
         const finalMessages = [...updatedMessages, aiMessage];
         setChatMessages(finalMessages);
+        // History kaydı
+        try {
+          const existingId = window.electronAPI?.store ? await window.electronAPI.store.get('currentSessionId') : null;
+          const session = {
+            id: existingId || `sess_${Date.now()}`,
+            title: chatTitle || generateChatTitle(message),
+            messages: finalMessages,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+          if (window.electronAPI?.store) await window.electronAPI.store.set('currentSessionId', session.id);
+          await window.electronAPI?.history?.save(session);
+        } catch (e) {
+          console.warn('history save error', e);
+        }
+        // History kaydı
+        try {
+          const session = {
+            id: (await window.electronAPI?.store?.get('currentSessionId')) || `sess_${Date.now()}`,
+            title: chatTitle || generateChatTitle(message),
+            messages: finalMessages,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+          await window.electronAPI?.store?.set('currentSessionId', session.id);
+          await window.electronAPI?.history?.save(session);
+          dispatch(setSession(session));
+        } catch (e) {
+          console.warn('history save error', e);
+        }
         
         // Reset streaming states
         setIsStreaming(false);
         setStreamingContent('');
         setStreamingToEditor(false);
+        setChatProgress('');
+        setChatThoughts('');
+        setCurrentThinkingSteps([]);
         
         // Create checkpoint for AI message
         createCheckpoint(finalMessages.length - 1, currentDocument);
@@ -889,7 +1015,11 @@ function App() {
           content: `Üzgünüm, bir hata oluştu: ${error}\n\nLütfen tekrar deneyin veya daha kısa bir mesaj gönderin.`,
           role: 'assistant',
           timestamp: new Date().toISOString(),
-          isError: true
+          isError: true,
+          thinkingSteps: [
+            ...currentThinkingSteps,
+            ...(chatThoughts ? [{ type: 'thought', text: chatThoughts, ts: Date.now() }] : [])
+          ]
         };
         
         setChatMessages([...updatedMessages, errorMessage]);
@@ -898,6 +1028,9 @@ function App() {
         setIsStreaming(false);
         setStreamingContent('');
         setStreamingToEditor(false);
+        setChatProgress('');
+        setChatThoughts('');
+        setCurrentThinkingSteps([]);
       };
       
       // Start streaming with attachments (geçmişi aktar)
@@ -905,9 +1038,21 @@ function App() {
         message,
         attachments,
         onChunk,
+        onProgress,
+        onThought,
         true,
-        chatMessages // geçmiş: önceki mesajlar (gönderilen kullanıcı mesajı hariç)
+        chatMessages, // geçmiş: önceki mesajlar (gönderilen kullanıcı mesajı hariç)
+        mode
       ).then(response => {
+        // Özetle modunda bağlam yüzdesini yaklaşık hesapla
+        if (mode === 'ozetle') {
+          try {
+            const percent = attachments && attachments.length > 0
+              ? Math.min(100, Math.round(((response.documentsUsed || 0) / attachments.length) * 100))
+              : undefined;
+            dispatch(setContextPercentage(percent));
+          } catch (_) {}
+        }
         onComplete({
           content: response.text,
           timestamp: new Date().toISOString(),
@@ -952,6 +1097,22 @@ function App() {
         timestamp: new Date().toISOString()
       };
       setChatHistory(prev => [chatToSave, ...prev.slice(0, 9)]); // Keep last 10 chats
+      // persist via history API
+      (async () => {
+        try {
+          const session = {
+            id: `sess_${chatToSave.id}`,
+            title: chatToSave.title,
+            messages: chatToSave.messages,
+            createdAt: chatToSave.timestamp,
+            updatedAt: chatToSave.timestamp,
+          };
+          await window.electronAPI?.history?.save(session);
+          dispatch(setSession(session));
+        } catch (e) {
+          console.warn('history save on clear error', e);
+        }
+      })();
     }
     
     setChatMessages([]);
@@ -1618,8 +1779,26 @@ function App() {
       // Use pending content if available, otherwise use suggestion text
       const contentToAdd = pendingContent || formattedSuggestion;
       
-      // For replace mode, completely replace the document content
-      let finalContent = contentToAdd;
+      // Check if this is a partial update by looking at pending changes
+      const currentPendingChanges = textFormattingService.getPendingChanges();
+      const hasPartialChange = currentPendingChanges.some(change => change.changeType === 'partial');
+      
+      let finalContent;
+      
+      if (hasPartialChange) {
+        // For partial updates, apply the changes to get the final merged content
+        console.log('🔀 Applying partial update changes');
+        finalContent = textFormattingService.clearDiffHighlights(currentDocument.content);
+        
+        // Apply all pending changes
+        currentPendingChanges.forEach(change => {
+          textFormattingService.approveChange(change.id);
+        });
+      } else {
+        // For complete replacement, use the new content
+        console.log('🔄 Complete replacement');
+        finalContent = contentToAdd;
+      }
       
       const newDocumentState = {
         ...currentDocument,
@@ -1829,6 +2008,8 @@ function App() {
             chatTitle={chatTitle}
             chatHistory={chatHistory}
             onLoadChatFromHistory={handleLoadChatFromHistory}
+            progressStatus={chatProgress}
+            thoughtSummary={chatThoughts}
           />
         </ResizablePanel>
       </ResizablePanelGroup>

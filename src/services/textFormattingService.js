@@ -14,6 +14,9 @@ class TextFormattingService {
       return plainText;
     }
 
+    // 0. Markdown kalın (**...**) başlık/biçimlendirme kaldır
+    plainText = this.sanitizeMarkdownBold(plainText);
+
     // Check cache first
     const cacheKey = this.generateCacheKey(plainText);
     if (this.formatCache.has(cacheKey)) {
@@ -35,6 +38,20 @@ class TextFormattingService {
     this.setCacheValue(cacheKey, formattedText);
 
     return formattedText;
+  }
+
+  // Markdown kalın (**...**) kullanımını kaldırır (başlık karmaşasını engellemek için)
+  sanitizeMarkdownBold(text) {
+    if (!text) return text;
+    // 1) Tam satırı kaplayan **...** veya **...**: kalıplarını düz metne çevir
+    let cleaned = text
+      .replace(/^\s*\*\*(.*?)\*\*\s*:?\s*$/gm, '$1')
+      .replace(/^\s*\*\*(.*?)\*\*\s*$/gm, '$1');
+
+    // 2) Kalan tüm **...** kalıplarını da sadeleştir (paragraf içi kalınları da kaldır)
+    cleaned = cleaned.replace(/\*\*(.*?)\*\*/g, '$1');
+
+    return cleaned;
   }
 
   // Generate cache key
@@ -160,98 +177,111 @@ class TextFormattingService {
     };
   }
 
-  // Metin değişikliklerini hesapla (diff algoritması)
+  // Metin değişikliklerini hesapla (paragraf bazlı diff)
   calculateTextDiff(originalText, newText) {
-    console.log('=== DIFF CALCULATION START ===');
+    console.log('=== PARAGRAPH DIFF START ===');
     console.log('Original:', originalText?.substring(0, 100) + '...');
     console.log('New:', newText?.substring(0, 100) + '...');
-    
+
+    // Hızlı durumlar
     if (!originalText && !newText) return [];
     if (!originalText) {
-      const result = [{
+      const newParagraphs = this._splitIntoParagraphs(newText);
+      const cumulativeNewOffsets = this._computeCumulativeOffsets(newParagraphs);
+      const result = newParagraphs.map((p, idx) => ({
         type: 'addition',
-        text: newText,
-        start: 0,
-        end: newText.length,
-        id: this.generateChangeId()
-      }];
-      console.log('Full addition:', result);
+        text: p,
+        start: cumulativeNewOffsets[idx],
+        end: cumulativeNewOffsets[idx] + p.length,
+        id: this.generateChangeId(),
+      }));
+      console.log('Full paragraph additions:', result.length);
       return result;
     }
     if (!newText) {
-      const result = [{
-        type: 'deletion', 
-        text: originalText,
-        start: 0,
-        end: originalText.length,
-        id: this.generateChangeId()
-      }];
-      console.log('Full deletion:', result);
+      const origParagraphs = this._splitIntoParagraphs(originalText);
+      const cumulativeOrigOffsets = this._computeCumulativeOffsets(origParagraphs);
+      const result = origParagraphs.map((p, idx) => ({
+        type: 'deletion',
+        text: p,
+        start: cumulativeOrigOffsets[idx],
+        end: cumulativeOrigOffsets[idx] + p.length,
+        id: this.generateChangeId(),
+      }));
+      console.log('Full paragraph deletions:', result.length);
       return result;
     }
 
-    const changes = [];
-    const words1 = originalText.split(/(\s+)/);
-    const words2 = newText.split(/(\s+)/);
-    
-    console.log('Words comparison:', { words1: words1.slice(0, 5), words2: words2.slice(0, 5) });
-    
-    // Basit diff algoritması - word level
-    const dp = Array(words1.length + 1).fill(null).map(() => Array(words2.length + 1).fill(0));
-    
-    // LCS (Longest Common Subsequence) hesapla
-    for (let i = 1; i <= words1.length; i++) {
-      for (let j = 1; j <= words2.length; j++) {
-        if (words1[i-1] === words2[j-1]) {
-          dp[i][j] = dp[i-1][j-1] + 1;
+    // Paragraflara böl
+    const origParagraphs = this._splitIntoParagraphs(originalText);
+    const newParagraphs = this._splitIntoParagraphs(newText);
+
+    // LCS tablosu (paragraf bazlı)
+    const m = origParagraphs.length;
+    const n = newParagraphs.length;
+    const dp = Array(m + 1)
+      .fill(null)
+      .map(() => Array(n + 1).fill(0));
+
+    for (let i = 1; i <= m; i++) {
+      for (let j = 1; j <= n; j++) {
+        if (origParagraphs[i - 1] === newParagraphs[j - 1]) {
+          dp[i][j] = dp[i - 1][j - 1] + 1;
         } else {
-          dp[i][j] = Math.max(dp[i-1][j], dp[i][j-1]);
+          dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
         }
       }
     }
 
-    // Backtrack edip değişiklikleri bul
-    let i = words1.length;
-    let j = words2.length;
-    let pos1 = originalText.length;
-    let pos2 = newText.length;
-
+    // Operasyonları çıkar (equal/insert/delete sırası)
+    const ops = [];
+    let i = m;
+    let j = n;
     while (i > 0 || j > 0) {
-      if (i > 0 && j > 0 && words1[i-1] === words2[j-1]) {
-        // Aynı kelime - geri git
-        pos1 -= words1[i-1].length;
-        pos2 -= words2[j-1].length;
+      if (i > 0 && j > 0 && origParagraphs[i - 1] === newParagraphs[j - 1]) {
+        ops.unshift({ type: 'equal', content: origParagraphs[i - 1], i: i - 1, j: j - 1 });
         i--;
         j--;
-      } else if (i > 0 && (j === 0 || dp[i-1][j] >= dp[i][j-1])) {
-        // Silinen kelime
-        const word = words1[i-1];
-        pos1 -= word.length;
-        changes.unshift({
-          type: 'deletion',
-          text: word,
-          start: pos1,
-          end: pos1 + word.length,
-          id: this.generateChangeId()
-        });
-        i--;
-      } else {
-        // Eklenen kelime
-        const word = words2[j-1];
-        pos2 -= word.length;
-        changes.unshift({
-          type: 'addition',
-          text: word,
-          start: pos2,
-          end: pos2 + word.length,
-          id: this.generateChangeId()
-        });
+      } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+        ops.unshift({ type: 'insert', content: newParagraphs[j - 1], j: j - 1 });
         j--;
+      } else if (i > 0) {
+        ops.unshift({ type: 'delete', content: origParagraphs[i - 1], i: i - 1 });
+        i--;
       }
     }
 
-    console.log('Changes calculated:', changes);
-    console.log('=== DIFF CALCULATION END ===');
+    // Start/end pozisyonlarını hesaplamak için kümülatif ofsetler
+    const cumOrig = this._computeCumulativeOffsets(origParagraphs);
+    const cumNew = this._computeCumulativeOffsets(newParagraphs);
+
+    const changes = [];
+    ops.forEach(op => {
+      if (op.type === 'insert') {
+        const idx = op.j;
+        const start = cumNew[idx];
+        changes.push({
+          type: 'addition',
+          text: newParagraphs[idx],
+          start,
+          end: start + newParagraphs[idx].length,
+          id: this.generateChangeId(),
+        });
+      } else if (op.type === 'delete') {
+        const idx = op.i;
+        const start = cumOrig[idx];
+        changes.push({
+          type: 'deletion',
+          text: origParagraphs[idx],
+          start,
+          end: start + origParagraphs[idx].length,
+          id: this.generateChangeId(),
+        });
+      }
+    });
+
+    console.log('Paragraph changes calculated:', changes);
+    console.log('=== PARAGRAPH DIFF END ===');
     return changes;
   }
 
@@ -351,89 +381,61 @@ class TextFormattingService {
     return highlightedText;
   }
 
-  // Pending metni highlight'larıyla birlikte döndür - Enhanced TipTap Style
+  // Pending metni highlight'larıyla birlikte döndür - Paragraf Bazlı
   getPendingTextWithHighlights(originalText, newText) {
     const changes = this.calculateTextDiff(originalText, newText);
-    
-    // TipTap inspired inline diff approach
-    let result = this.createTipTapStyleDiff(originalText, newText, changes);
-    
-    return {
-      highlightedText: result,
-      changes: changes
-    };
+    const result = this.createParagraphDiffView(originalText, newText);
+    return { highlightedText: result, changes };
   }
 
-  // TipTap style diff oluştur - FIXED: No HTML escaping for clean display
-  createTipTapStyleDiff(originalText, newText, changes) {
-    console.log('=== TIPTAP STYLE DIFF START ===');
-    console.log('Original text:', originalText?.substring(0, 100));
-    console.log('New text:', newText?.substring(0, 100));
-    console.log('Changes:', changes);
-    
-    if (!changes || changes.length === 0) {
-      return newText;
-    }
-    
-    // Extract text content from HTML for comparison (no tags)
-    const originalTextContent = this.stripHTML(originalText);
-    const newTextContent = this.stripHTML(newText);
-    
-    // Word-by-word comparison for inline diffs (TipTap approach)
-    const originalWords = this.tokenizeText(originalTextContent);
-    const newWords = this.tokenizeText(newTextContent);
-    
-    console.log('Original words (clean):', originalWords.slice(0, 10));
-    console.log('New words (clean):', newWords.slice(0, 10));
-    
-    let result = '';
-    let i = 0, j = 0;
-    
-    while (i < originalWords.length || j < newWords.length) {
-      if (i >= originalWords.length) {
-        // Sadece yeni kelimeler kaldı - inline-insert
-        while (j < newWords.length) {
-          // CLEAN: No HTML escaping for proper display
-          const additionHTML = `<span data-diff-type="inline-insert" data-diff-user-id="AI">${newWords[j]}</span>`;
-          console.log('Adding insertion:', additionHTML);
-          result += additionHTML;
-          j++;
-        }
-        break;
-      }
-      
-      if (j >= newWords.length) {
-        // Sadece eski kelimeler kaldı - inline-delete
-        while (i < originalWords.length) {
-          const deletionHTML = `<span data-diff-type="inline-delete" data-diff-user-id="AI">${originalWords[i]}</span>`;
-          console.log('Adding deletion:', deletionHTML);
-          result += deletionHTML;
-          i++;
-        }
-        break;
-      }
-      
-      if (originalWords[i] === newWords[j]) {
-        // Aynı kelime - değişiklik yok, clean display
-        result += newWords[j];
-        i++;
-        j++;
-      } else {
-        // Farklı kelimeler - deletion + insertion (TipTap style)
-        const deletionHTML = `<span data-diff-type="inline-delete" data-diff-user-id="AI">${originalWords[i]}</span>`;
-        const insertionHTML = `<span data-diff-type="inline-insert" data-diff-user-id="AI">${newWords[j]}</span>`;
-        console.log('Different words - deletion:', deletionHTML, 'insertion:', insertionHTML);
-        result += deletionHTML + insertionHTML;
-        i++;
-        j++;
+  // Paragraf bazlı diff görünümü üret
+  createParagraphDiffView(originalText, newText) {
+    console.log('=== PARAGRAPH DIFF VIEW START ===');
+    const orig = this._splitIntoParagraphs(originalText);
+    const now = this._splitIntoParagraphs(newText);
+
+    const m = orig.length;
+    const n = now.length;
+    const dp = Array(m + 1)
+      .fill(null)
+      .map(() => Array(n + 1).fill(0));
+
+    for (let i = 1; i <= m; i++) {
+      for (let j = 1; j <= n; j++) {
+        if (orig[i - 1] === now[j - 1]) dp[i][j] = dp[i - 1][j - 1] + 1;
+        else dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
       }
     }
-    
-    // Wrap in paragraph for proper TipTap structure
-    const finalResult = `<p>${result}</p>`;
-    console.log('Final TipTap diff result:', finalResult.substring(0, 300) + '...');
-    console.log('=== TIPTAP STYLE DIFF END ===');
-    return finalResult;
+
+    // Operasyon şeridi oluştur
+    const ops = [];
+    let i = m;
+    let j = n;
+    while (i > 0 || j > 0) {
+      if (i > 0 && j > 0 && orig[i - 1] === now[j - 1]) {
+        ops.unshift({ type: 'equal', content: now[j - 1] });
+        i--; j--;
+      } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+        ops.unshift({ type: 'insert', content: now[j - 1] });
+        j--;
+      } else if (i > 0) {
+        ops.unshift({ type: 'delete', content: orig[i - 1] });
+        i--;
+      }
+    }
+
+    // HTML üret
+    const html = ops
+      .map(op => {
+        if (op.type === 'equal') return `<p>${op.content}</p>`;
+        if (op.type === 'insert') return `<p data-diff-type="paragraph-insert" data-diff-user-id="AI">${op.content}</p>`;
+        if (op.type === 'delete') return `<p data-diff-type="paragraph-delete" data-diff-user-id="AI">${op.content}</p>`;
+        return '';
+      })
+      .join('');
+
+    console.log('=== PARAGRAPH DIFF VIEW END ===');
+    return html;
   }
 
   // HTML escape utility function - Güvenlik için
@@ -470,6 +472,102 @@ class TextFormattingService {
     return text.split(/(\s+)/).filter(token => token.length > 0);
   }
 
+  // AI yanıtının kısmi güncelleme mi tam dilekçe mi olduğunu kontrol et
+  isPartialUpdate(originalText, newText) {
+    if (!originalText || !newText) return false;
+    
+    // Paragraf sayılarını karşılaştır
+    const originalParagraphs = this._splitIntoParagraphs(originalText);
+    const newParagraphs = this._splitIntoParagraphs(newText);
+    
+    console.log('🔍 Partial update check:');
+    console.log('Original paragraphs:', originalParagraphs.length);
+    console.log('New paragraphs:', newParagraphs.length);
+    
+    // Eğer yeni metin orijinal metinden çok daha kısa ise, kısmi güncelleme olabilir
+    const lengthRatio = newText.length / originalText.length;
+    console.log('Length ratio:', lengthRatio);
+    
+    // Eğer yeni metin orijinalin %30'undan az ise ve en az 1 paragraf varsa kısmi güncelleme
+    if (lengthRatio < 0.3 && newParagraphs.length >= 1 && newParagraphs.length < originalParagraphs.length) {
+      console.log('✅ Detected as partial update (length based)');
+      return true;
+    }
+    
+    // Alternatif: Yeni paragrafların hiçbiri orijinal metinde tam olarak yoksa kısmi güncelleme
+    const hasMatchingParagraphs = newParagraphs.some(newPara => 
+      originalParagraphs.some(origPara => origPara.trim() === newPara.trim())
+    );
+    
+    if (!hasMatchingParagraphs && newParagraphs.length < originalParagraphs.length) {
+      console.log('✅ Detected as partial update (no matching paragraphs)');
+      return true;
+    }
+    
+    console.log('❌ Not a partial update');
+    return false;
+  }
+
+  // Kısmi güncellemeyi mevcut metinle merge et
+  mergePartialUpdate(originalText, partialUpdate) {
+    console.log('🔀 Merging partial update');
+    console.log('Original text length:', originalText.length);
+    console.log('Partial update length:', partialUpdate.length);
+    
+    const originalParagraphs = this._splitIntoParagraphs(originalText);
+    const updateParagraphs = this._splitIntoParagraphs(partialUpdate);
+    
+    // Basit strateji: Güncellenen paragrafları bul ve değiştir
+    // Daha karmaşık algoritmalar için LCS kullanılabilir, ama şimdilik basit yaklaşım
+    
+    // Güncellenen paragrafı orijinal metinde en çok benzeyen paragrafla eşleştir
+    let mergedParagraphs = [...originalParagraphs];
+    
+    for (const updatePara of updateParagraphs) {
+      let bestMatchIndex = -1;
+      let bestMatchScore = 0;
+      
+      // Her orijinal paragrafla benzerlik skoru hesapla
+      for (let i = 0; i < originalParagraphs.length; i++) {
+        const similarity = this._calculateSimilarity(originalParagraphs[i], updatePara);
+        if (similarity > bestMatchScore && similarity > 0.3) { // En az %30 benzerlik
+          bestMatchScore = similarity;
+          bestMatchIndex = i;
+        }
+      }
+      
+      // En iyi eşleşmeyi bulduysa değiştir
+      if (bestMatchIndex !== -1) {
+        console.log(`🔄 Replacing paragraph ${bestMatchIndex} (similarity: ${bestMatchScore.toFixed(2)})`);
+        mergedParagraphs[bestMatchIndex] = updatePara;
+      } else {
+        // Eşleşme bulunamadıysa sona ekle
+        console.log('➕ Adding new paragraph at the end');
+        mergedParagraphs.push(updatePara);
+      }
+    }
+    
+    const mergedText = mergedParagraphs.join('\n\n');
+    console.log('✅ Merge completed, final length:', mergedText.length);
+    
+    return mergedText;
+  }
+
+  // İki paragraf arasındaki benzerlik skorunu hesapla (basit kelime tabanlı)
+  _calculateSimilarity(text1, text2) {
+    if (!text1 || !text2) return 0;
+    
+    const words1 = text1.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+    const words2 = text2.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+    
+    if (words1.length === 0 || words2.length === 0) return 0;
+    
+    const commonWords = words1.filter(word => words2.includes(word));
+    const similarity = (2 * commonWords.length) / (words1.length + words2.length);
+    
+    return similarity;
+  }
+
   // Original text'teki pozisyonu hesapla
   getOriginalPosition(change, originalText, newText) {
     if (change.type === 'deletion') {
@@ -487,20 +585,20 @@ class TextFormattingService {
     return index >= 0 ? index + textBefore.length : 0;
   }
 
-  // Legacy support - redirects to TipTap style diff
+  // Legacy API'ler - artık paragraf bazlı görünüme yönlendirir
   createVisibleDiffView(originalText, newText, changes) {
-    return this.createTipTapStyleDiff(originalText, newText, changes);
+    return this.createParagraphDiffView(originalText, newText);
   }
 
   createInlineDiff(originalText, newText, changes) {
-    return this.createTipTapStyleDiff(originalText, newText, changes);
+    return this.createParagraphDiffView(originalText, newText);
   }
 
   createSimpleDiffView(originalText, newText, changes) {
-    return this.createTipTapStyleDiff(originalText, newText, changes);
+    return this.createParagraphDiffView(originalText, newText);
   }
 
-  // AI'ın ilk kez yazdığı metni pending olarak işaretle - CLEAN VERSION
+  // AI'ın ilk kez yazdığı metni pending olarak işaretle - Paragraf bazlı
   markTextAsPending(text) {
     if (!text) return text;
     
@@ -509,8 +607,8 @@ class TextFormattingService {
     // Extract clean text content (no HTML tags or escaping)
     const cleanTextContent = this.stripHTML(text);
     
-    // Create pending marker with clean content (no HTML escaping)
-    const result = `<p><span data-diff-type="pending" data-diff-user-id="AI">${cleanTextContent}</span></p>`;
+    // Paragraf seviyesinde pending marker
+    const result = `<p data-diff-type="pending" data-diff-user-id="AI">${cleanTextContent}</p>`;
     console.log('🟢 markTextAsPending result (clean):', result.substring(0, 200) + '...');
     return result;
   }
@@ -526,6 +624,10 @@ class TextFormattingService {
       .replace(/<span[^>]*data-diff-type="inline-delete"[^>]*>(.*?)<\/span>/gs, '$1')
       .replace(/<span[^>]*data-diff-type="inline-update"[^>]*>(.*?)<\/span>/gs, '$1')
       .replace(/<span[^>]*data-diff-type="pending"[^>]*>(.*?)<\/span>/gs, '$1')
+      // Paragraf bazlı diff temizlikleri
+      .replace(/<p[^>]*data-diff-type="paragraph-insert"[^>]*>(.*?)<\/p>/gs, '<p>$1</p>')
+      .replace(/<p[^>]*data-diff-type="paragraph-delete"[^>]*>(.*?)<\/p>/gs, '<p>$1</p>')
+      .replace(/<p[^>]*data-diff-type="pending"[^>]*>(.*?)<\/p>/gs, '<p>$1</p>')
       .replace(/<span class="diff-addition"[^>]*>(.*?)<\/span>/gs, '$1')
       .replace(/<span class="diff-deletion"[^>]*>(.*?)<\/span>/gs, '$1')
       .replace(/<span class="diff-pending"[^>]*>(.*?)<\/span>/gs, '$1');
@@ -596,6 +698,35 @@ class TextFormattingService {
     const pending = this.pendingChanges.size;
     const approved = this.approvedChanges.size;
     return { pending, approved, total: pending + approved };
+  }
+
+  // Yardımcılar — paragraf bölme ve ofset hesaplama
+  _splitIntoParagraphs(text) {
+    if (!text) return [];
+    // Eğer HTML <p> içeriyorsa, içeriği çıkar
+    const paragraphRegex = /<p[^>]*>(.*?)<\/p>/gis;
+    const matches = Array.from(text.matchAll(paragraphRegex)).map(m => m[1].trim());
+    if (matches.length > 0) {
+      return matches.filter(p => p.length > 0);
+    }
+    // HTML değilse, boş satırlarla ayrılmış paragrafları kullan
+    const blocks = text
+      .split(/\n{2,}|\r\n{2,}/)
+      .map(p => p.trim())
+      .filter(p => p.length > 0);
+    if (blocks.length > 0) return blocks;
+    // Tek satırlı içerik fallback
+    return [text.trim()].filter(Boolean);
+  }
+
+  _computeCumulativeOffsets(paragraphs) {
+    const offsets = [];
+    let sum = 0;
+    for (let k = 0; k < paragraphs.length; k++) {
+      offsets.push(sum);
+      sum += paragraphs[k].length; // Paragraf içeriği uzunluğu (etiketsiz)
+    }
+    return offsets;
   }
 }
 

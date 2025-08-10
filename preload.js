@@ -39,6 +39,31 @@ contextBridge.exposeInMainWorld('electronAPI', {
   app: {
     getVersion: () => ipcRenderer.invoke('app:getVersion')
   },
+  // Rules helpers
+  rules: {
+    listRuleFiles: (workspacePath) => ipcRenderer.invoke('rules:list', workspacePath),
+    ensureDir: (workspacePath) => ipcRenderer.invoke('rules:ensureDir', workspacePath),
+    read: (filePath) => ipcRenderer.invoke('rules:read', filePath),
+    write: (workspacePath, fileName, content) => ipcRenderer.invoke('rules:write', workspacePath, fileName, content),
+  },
+  fs: {
+    readFileText: (filePath) => ipcRenderer.invoke('fs:readFileText', filePath),
+  },
+
+  // History API
+  history: {
+    list: (params) => ipcRenderer.invoke('history:list', params),
+    load: (id) => ipcRenderer.invoke('history:load', id),
+    save: (session) => ipcRenderer.invoke('history:save', session),
+    delete: (id) => ipcRenderer.invoke('history:delete', id),
+    clear: () => ipcRenderer.invoke('history:clear'),
+  },
+
+  // Autocomplete cache API
+  autocompleteCache: {
+    get: (prefix) => ipcRenderer.invoke('autocomplete:get', prefix),
+    put: (prefix, completion) => ipcRenderer.invoke('autocomplete:put', prefix, completion),
+  },
   
   // Debug için (sadece development)
   console: {

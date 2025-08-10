@@ -1,10 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { Key, CheckCircle, Info, ArrowLeft, Sun, Moon } from 'lucide-react';
+import { Key, CheckCircle, Info, ArrowLeft, Sun, Moon, FilePlus, Shield, ListChecks } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 function SettingsPanel({ onBack, darkMode, onToggleTheme }) {
   const [appVersion, setAppVersion] = useState('1.0.0');
+  const [activeTab, setActiveTab] = useState('general');
+  const [rules, setRules] = useState([]);
+  const [rulePolicies, setRulePolicies] = useState({});
+  const [isLoadingRules, setIsLoadingRules] = useState(false);
+  const [newRuleDialogOpen, setNewRuleDialogOpen] = useState(false);
+  const [newRuleForm, setNewRuleForm] = useState({ name: '', description: '', alwaysApply: true, globs: '', regex: '', rule: '' });
 
   // Load app version
   useEffect(() => {
@@ -19,6 +25,34 @@ function SettingsPanel({ onBack, darkMode, onToggleTheme }) {
       }
     };
     loadAppInfo();
+  }, []);
+
+  useEffect(() => {
+    const loadRules = async () => {
+      if (!window.electronAPI) return;
+      try {
+        setIsLoadingRules(true);
+        const ws = await window.electronAPI.store.get('currentWorkspace');
+        if (!ws?.path) {
+          setRules([]);
+          setIsLoadingRules(false);
+          return;
+        }
+        await window.electronAPI.rules.ensureDir(ws.path);
+        const files = await window.electronAPI.rules.listRuleFiles(ws.path);
+        const list = [];
+        for (const f of files) {
+          const res = await window.electronAPI.rules.read(f);
+          list.push({ file: f, content: res?.data || '' });
+        }
+        setRules(list);
+      } catch (e) {
+        console.error('Rules load error:', e);
+      } finally {
+        setIsLoadingRules(false);
+      }
+    };
+    loadRules();
   }, []);
 
 
@@ -56,6 +90,14 @@ function SettingsPanel({ onBack, darkMode, onToggleTheme }) {
           </p>
         </div>
 
+        {/* Tabs */}
+        <div className="flex items-center space-x-2 mb-4">
+          <button onClick={() => setActiveTab('general')} className={`px-3 py-2 rounded ${activeTab==='general'?'bg-primary/20':'hover:bg-muted'}`}>Genel</button>
+          <button onClick={() => setActiveTab('rules')} className={`px-3 py-2 rounded ${activeTab==='rules'?'bg-primary/20':'hover:bg-muted'}`}>Kurallar</button>
+        </div>
+
+        {activeTab === 'general' && (
+        <>
         {/* AI Engine Information */}
         <div className="bg-card border border-border rounded-lg">
           <div className="bg-muted/50 px-4 py-3 border-b border-border font-medium">
@@ -186,6 +228,107 @@ function SettingsPanel({ onBack, darkMode, onToggleTheme }) {
             </div>
           </div>
         </div>
+        </>
+        )}
+
+        {activeTab === 'rules' && (
+          <div className="bg-card border border-border rounded-lg p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <ListChecks className="w-5 h-5" />
+                <span className="font-medium">Kurallar</span>
+              </div>
+              <button
+                onClick={() => setNewRuleDialogOpen(true)}
+                className="px-3 py-2 bg-primary text-primary-foreground rounded inline-flex items-center space-x-2"
+              >
+                <FilePlus className="w-4 h-4" />
+                <span>Yeni Kural</span>
+              </button>
+            </div>
+            <div className="text-sm text-muted-foreground">Kural politikaları: kapat (off), açık (on), sıkı (strict)</div>
+            <div className="space-y-2">
+              {isLoadingRules ? (
+                <div>Yükleniyor...</div>
+              ) : rules.length === 0 ? (
+                <div>Henüz kural bulunmuyor.</div>
+              ) : (
+                rules.map((r, idx) => {
+                  const nameMatch = r.content.match(/name:\s*"?([^"\n]+)"?/);
+                  const descMatch = r.content.match(/description:\s*"?([^"\n]+)"?/);
+                  const name = nameMatch ? nameMatch[1] : r.file.split('/').pop();
+                  const desc = descMatch ? descMatch[1] : '';
+                  const policy = rulePolicies[name] || 'on';
+                  return (
+                    <div key={idx} className="flex items-center justify-between p-2 border rounded">
+                      <div className="flex items-center space-x-2">
+                        <Shield className="w-4 h-4" />
+                        <div>
+                          <div className="font-medium text-foreground text-sm">{name}</div>
+                          {desc && <div className="text-xs text-muted-foreground">{desc}</div>}
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        {['off','on','strict'].map(p => (
+                          <button key={p} onClick={() => setRulePolicies(prev => ({...prev, [name]: p}))}
+                            className={`px-2 py-1 rounded text-xs ${policy===p?'bg-primary text-primary-foreground':'bg-muted'}`}>{p}</button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+            {newRuleDialogOpen && (
+              <div className="border rounded p-3 space-y-2">
+                <div className="font-medium">Yeni Kural</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <input className="border rounded px-2 py-1" placeholder="Ad" value={newRuleForm.name} onChange={e=>setNewRuleForm({...newRuleForm,name:e.target.value})} />
+                  <input className="border rounded px-2 py-1" placeholder="Açıklama" value={newRuleForm.description} onChange={e=>setNewRuleForm({...newRuleForm,description:e.target.value})} />
+                  <input className="border rounded px-2 py-1 col-span-2" placeholder="Globs (virgülle)" value={newRuleForm.globs} onChange={e=>setNewRuleForm({...newRuleForm,globs:e.target.value})} />
+                  <input className="border rounded px-2 py-1 col-span-2" placeholder="Regex (virgülle)" value={newRuleForm.regex} onChange={e=>setNewRuleForm({...newRuleForm,regex:e.target.value})} />
+                  <label className="flex items-center space-x-2 col-span-2">
+                    <input type="checkbox" checked={newRuleForm.alwaysApply} onChange={e=>setNewRuleForm({...newRuleForm,alwaysApply:e.target.checked})} />
+                    <span>Her zaman uygula</span>
+                  </label>
+                  <textarea className="border rounded px-2 py-1 col-span-2" rows={6} placeholder="Kural metni" value={newRuleForm.rule} onChange={e=>setNewRuleForm({...newRuleForm,rule:e.target.value})} />
+                </div>
+                <div className="flex items-center space-x-2">
+                  <button className="px-3 py-2 bg-primary text-primary-foreground rounded" onClick={async ()=>{
+                    try {
+                      const ws = await window.electronAPI.store.get('currentWorkspace');
+                      if (!ws?.path) return;
+                      await window.electronAPI.rules.ensureDir(ws.path);
+                      const fileName = `${(newRuleForm.name||'kural').toLowerCase().replace(/\s+/g,'-')}.md`;
+                      const fm = [
+                        '---',
+                        `name: "${newRuleForm.name||''}"`,
+                        newRuleForm.description?`description: "${newRuleForm.description}"`:'' ,
+                        newRuleForm.globs?`globs: [${newRuleForm.globs.split(',').map(s=>`"${s.trim()}"`).join(', ')}]`:'' ,
+                        newRuleForm.regex?`regex: [${newRuleForm.regex.split(',').map(s=>`"${s.trim()}"`).join(', ')}]`:'' ,
+                        `alwaysApply: ${newRuleForm.alwaysApply? 'true':'false'}`,
+                        '---',
+                      ].filter(Boolean).join('\n');
+                      const content = `${fm}\n${newRuleForm.rule||''}\n`;
+                      await window.electronAPI.rules.write(ws.path, fileName, content);
+                      setNewRuleDialogOpen(false);
+                      setNewRuleForm({ name:'', description:'', alwaysApply:true, globs:'', regex:'', rule:'' });
+                      // reload
+                      const files = await window.electronAPI.rules.listRuleFiles(ws.path);
+                      const list = [];
+                      for (const f of files) {
+                        const res = await window.electronAPI.rules.read(f);
+                        list.push({ file: f, content: res?.data || '' });
+                      }
+                      setRules(list);
+                    } catch (e) { console.error('Yeni kural kaydı hata', e); }
+                  }}>Kaydet</button>
+                  <button className="px-3 py-2 bg-muted rounded" onClick={()=>setNewRuleDialogOpen(false)}>İptal</button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
         </div>
       </ScrollArea>
     </div>

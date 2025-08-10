@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useMemo, useCallback } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
+import Paragraph from '@tiptap/extension-paragraph';
 import Underline from '@tiptap/extension-underline';
 import TextAlign from '@tiptap/extension-text-align';
 import Highlight from '@tiptap/extension-highlight';
@@ -23,8 +24,33 @@ import {
   X
 } from 'lucide-react';
 import textFormattingService from '../services/textFormattingService';
+import { createTiptapAutocompletePlugin } from '../lib/tiptapAutocompletePlugin';
 
 // Custom extensions for TipTap diff highlighting - FIXED VERSION
+// Paragraph node extended to preserve diff data attributes
+const ParagraphDiff = Paragraph.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      'data-diff-type': {
+        default: null,
+        parseHTML: element => element.getAttribute('data-diff-type'),
+        renderHTML: attributes => {
+          if (!attributes['data-diff-type']) return {};
+          return { 'data-diff-type': attributes['data-diff-type'] };
+        },
+      },
+      'data-diff-user-id': {
+        default: null,
+        parseHTML: element => element.getAttribute('data-diff-user-id'),
+        renderHTML: attributes => {
+          if (!attributes['data-diff-user-id']) return {};
+          return { 'data-diff-user-id': attributes['data-diff-user-id'] };
+        },
+      },
+    };
+  },
+});
 const DiffInsert = Mark.create({
   name: 'diffInsert',
   
@@ -302,7 +328,9 @@ const TipTapEditor = React.memo(({
           codeBlock: false,
           blockquote: false,
           horizontalRule: false,
+          paragraph: false, // we'll provide our own paragraph extension to keep data-* attributes
         }),
+        ParagraphDiff,
         Placeholder.configure({
           placeholder: placeholder,
         }),
@@ -450,6 +478,20 @@ const TipTapEditor = React.memo(({
       </div>
     );
   }
+
+  // Autocomplete plugin'ini mount sonrası ekle (TipTap config üzerinden plugin array override yerine)
+  React.useEffect(() => {
+    if (!editor?.view) return;
+    const [autocompletePlugin, autocompleteKeymap] = createTiptapAutocompletePlugin({ debounceMs: 200 });
+    editor.registerPlugin(autocompletePlugin);
+    editor.registerPlugin(autocompleteKeymap);
+    return () => {
+      try {
+        editor.unregisterPlugin(autocompletePlugin);
+        editor.unregisterPlugin(autocompleteKeymap);
+      } catch (_) {}
+    };
+  }, [editor]);
 
   const MenuBar = React.memo(() => {
     return (

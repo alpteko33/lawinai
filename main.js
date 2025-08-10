@@ -1,4 +1,6 @@
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+// TypeScript dosyalarını (main tarafı) canlı yükleyebilmek için
+try { require('ts-node/register'); } catch (_) {}
 const path = require('path');
 const fs = require('fs').promises;
 const Store = require('electron-store');
@@ -185,7 +187,21 @@ function createWindow() {
 }
 
 // Uygulama hazır olduğunda
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // Main tarafı TS modüllerini başlat
+  try {
+    const { autocompleteCache } = require('./src/main/cache/AutocompleteLruCache');
+    const { registerHistoryIpc } = require('./src/main/ipc/history');
+    const { registerAutocompleteIpc } = require('./src/main/ipc/autocomplete');
+    const { historyManager } = require('./src/main/history/HistoryManager');
+    await historyManager.init();
+    await autocompleteCache.init();
+    registerHistoryIpc();
+    registerAutocompleteIpc();
+    console.log('[Main] Cache ve History IPC hazır');
+  } catch (e) {
+    console.error('[Main] TS modülleri init hatası:', e);
+  }
   createWindow();
 
   // macOS için - dock iconuna tıklandığında pencereyi aç
@@ -540,6 +556,80 @@ ipcMain.handle('training:stats', async () => {
 // Uygulama versiyonu
 ipcMain.handle('app:getVersion', () => {
   return app.getVersion();
+});
+
+// Additional FS helpers
+ipcMain.handle('fs:readFileText', async (event, filePath) => {
+  try {
+    const data = await fs.readFile(filePath, 'utf8');
+    return data;
+  } catch (error) {
+    console.error('File read text error:', error);
+    throw error;
+  }
+});
+
+// Rules management under workspace
+ipcMain.handle('rules:list', async (event, workspacePath) => {
+  try {
+    const baseDir = path.join(workspacePath, '.legal', 'rules');
+    async function walk(dir, acc) {
+      let items = [];
+      try {
+        items = await fs.readdir(dir, { withFileTypes: true });
+      } catch (_) {
+        return acc;
+      }
+      for (const it of items) {
+        const full = path.join(dir, it.name);
+        if (it.isDirectory()) {
+          await walk(full, acc);
+        } else if (it.isFile() && it.name.toLowerCase().endsWith('.md')) {
+          acc.push(full);
+        }
+      }
+      return acc;
+    }
+    const files = await walk(baseDir, []);
+    return files;
+  } catch (error) {
+    console.error('rules:list error:', error);
+    return [];
+  }
+});
+
+ipcMain.handle('rules:ensureDir', async (event, workspacePath) => {
+  try {
+    const dir = path.join(workspacePath, '.legal', 'rules');
+    await fs.mkdir(dir, { recursive: true });
+    return { success: true, dir };
+  } catch (error) {
+    console.error('rules:ensureDir error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('rules:read', async (event, filePath) => {
+  try {
+    const data = await fs.readFile(filePath, 'utf8');
+    return { success: true, data };
+  } catch (error) {
+    console.error('rules:read error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('rules:write', async (event, workspacePath, fileName, content) => {
+  try {
+    const dir = path.join(workspacePath, '.legal', 'rules');
+    await fs.mkdir(dir, { recursive: true });
+    const target = path.join(dir, fileName);
+    await fs.writeFile(target, content, 'utf8');
+    return { success: true, path: target };
+  } catch (error) {
+    console.error('rules:write error:', error);
+    return { success: false, error: error.message };
+  }
 });
 
 // Console log'ları main process'te göster (development)

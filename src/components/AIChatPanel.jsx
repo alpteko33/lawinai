@@ -1,12 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Send, Copy, Check, X, RefreshCw, Edit2, Sparkles, Trash2, ChevronUp, ChevronDown, RotateCcw,
-  FileText, Image, FileIcon, AtSign, Search, Plus, Clock
+  FileText, Image, FileIcon, AtSign, Search, Plus, Clock, BadgeCheck
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import geminiService from '../services/geminiService';
+import { useDispatch, useSelector } from 'react-redux';
+import { selectMode, selectContextPercentage } from '@/renderer/redux/store';
+import ModeSelect from '@/components/ModeSelect/ModeSelect';
 
 
 
@@ -27,7 +30,9 @@ function AIChatPanel({
   chatTitle = '', // Sohbet başlığı
   onChatTitleChange = () => {}, // Sohbet başlığı değişiklik handler'ı
   chatHistory = [], // Geçmiş sohbetler
-  onLoadChatFromHistory = () => {} // Geçmiş sohbet yükleme handler'ı
+  onLoadChatFromHistory = () => {}, // Geçmiş sohbet yükleme handler'ı
+  progressStatus = '', // Ephemeral durum mesajı
+  thoughtSummary = '' // Düşünce özeti (isteğe bağlı, soluk)
 }) {
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -43,11 +48,34 @@ function AIChatPanel({
   const [tabSearchQuery, setTabSearchQuery] = useState(''); // Sekme arama sorgusu
   const [tabSearchIndex, setTabSearchIndex] = useState(-1); // Sekme arama indeksi
   const [textareaRows, setTextareaRows] = useState(2); // Textarea satır sayısı
+  const [appliedRules, setAppliedRules] = useState([]);
+  const [showRules, setShowRules] = useState(false);
   const [showChatHistory, setShowChatHistory] = useState(false); // Geçmiş sohbet dropdown'ı
   const scrollAreaRef = useRef(null);
   const inputRef = useRef(null);
   const fileSearchRef = useRef(null);
   const chatHistoryRef = useRef(null);
+
+  // Mode from global store
+  const dispatch = useDispatch();
+  const mode = useSelector(selectMode);
+  const contextPercentage = useSelector(selectContextPercentage);
+
+  // Mode dependent placeholder
+  const getPlaceholderByMode = () => {
+    if (editMode) return 'Mesajınızı düzenleyin...';
+    switch (mode) {
+      case 'yazdir':
+        return 'Hangi hukuki metni, hangi taraflar için ve hangi kapsamda yazdırmak istersiniz?';
+      case 'ozetle':
+        return 'Özetlenecek dosyaları/klasörleri seçin veya içerik yapıştırın.';
+      case 'sor':
+      default:
+        return 'Sorunuzu net ve kısa yazın. Gerekirse olayın tarihlerini belirtin.';
+    }
+  };
+
+  // ModeSelect bileşeni dinler (Cmd/Ctrl + .). Burada ekstra dinleyici eklemiyoruz.
 
   // Auto-scroll to bottom when new messages or streaming content appears
   useEffect(() => {
@@ -80,6 +108,11 @@ function AIChatPanel({
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [showChatHistory]);
+
+  // Sync applied rules from service
+  useEffect(() => {
+    setAppliedRules(geminiService.appliedRules || []);
+  }, [messages, isStreaming]);
 
   // Update input value when entering edit mode
   useEffect(() => {
@@ -290,8 +323,8 @@ function AIChatPanel({
       if (editMode && onSendEditedMessage) {
         await onSendEditedMessage(userMessage, selectedAttachments);
       } else {
-              // Normal mesaj gönderimi
-      await onSendMessage(userMessage, selectedAttachments);
+        // Normal mesaj gönderimi
+        await onSendMessage(userMessage, selectedAttachments);
       }
       
       // Clear attachments after sending
@@ -405,7 +438,7 @@ function AIChatPanel({
 
   // Render streaming message with typewriter effect
   const renderStreamingMessage = () => {
-    if (!isStreaming || !streamingContent) return null;
+    if (!isStreaming) return null;
 
     return (
       <div className="mb-4">
@@ -423,13 +456,31 @@ function AIChatPanel({
           </div>
         </div>
         
-        {/* Streaming Content */}
-        <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3">
-          <div className="text-xs text-gray-900 dark:text-gray-100 whitespace-pre-wrap">
-            {renderMessageContent(streamingContent)}
-            <span className="inline-block w-2 h-4 bg-purple-600 animate-pulse ml-1 align-text-bottom">|</span>
+        {/* Ephemeral progress & optional thoughts */}
+        {(progressStatus || thoughtSummary) && (
+          <div className="mb-1 space-y-0.5">
+            {progressStatus && (
+              <div className="text-[10px] text-gray-500 dark:text-gray-400 italic">
+                {progressStatus}
+              </div>
+            )}
+            {thoughtSummary && (
+              <div className="text-[10px] text-gray-500 dark:text-gray-400 italic line-clamp-2">
+                {thoughtSummary}
+              </div>
+            )}
           </div>
-        </div>
+        )}
+
+        {/* Streaming Content */}
+        {Boolean(streamingContent) && (
+          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+            <div className="text-xs text-gray-900 dark:text-gray-100 whitespace-pre-wrap">
+              {renderMessageContent(streamingContent)}
+              <span className="inline-block w-2 h-4 bg-purple-600 animate-pulse ml-1 align-text-bottom">|</span>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -579,6 +630,22 @@ function AIChatPanel({
                 </div>
               </div>
             )}
+
+            {/* Persistent thinking steps (if any) */}
+            {!isUser && Array.isArray(message.thinkingSteps) && message.thinkingSteps.length > 0 && (
+              <div className="mt-2">
+                <div className="text-[10px] text-gray-500 dark:text-gray-400 space-y-0.5">
+                  {message.thinkingSteps.map((step, idx) => (
+                    <div key={idx} className="flex items-start">
+                      <span className="inline-block w-1.5 h-1.5 bg-gray-400 dark:bg-gray-500 rounded-full mt-1 mr-2"></span>
+                      <span className="italic">
+                        {step.text}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -607,6 +674,8 @@ function AIChatPanel({
         </div>
         
         <div className="flex items-center space-x-2">
+          {/* Mode Select */}
+          <ModeSelect />
 
 
           {/* Edit Mode Indicator */}
@@ -693,12 +762,34 @@ function AIChatPanel({
           >
             <Trash2 className="w-4 h-4" />
           </Button>
+          {/* Applied Rules Badge */}
+          {Array.isArray(appliedRules) && appliedRules.length > 0 && (
+            <button
+              onClick={() => setShowRules(!showRules)}
+              className="h-8 px-2 text-xs rounded border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center"
+              title="Uygulanan Kurallar"
+            >
+              <BadgeCheck className="w-3 h-3 mr-1 text-green-600" />
+              Uygulanan Kurallar ({appliedRules.length})
+            </button>
+          )}
         </div>
       </div>
 
       {/* Input Area - Show at top only if no messages */}
       {messages.length === 0 && (
         <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+          {/* Özetle modunda context yüzdesi ve dosya sayısı göstergesi */}
+          {mode === 'ozetle' && (
+            <div className="mb-2 text-[10px] text-gray-600 dark:text-gray-400">
+              {selectedAttachments.length > 0 && (
+                <span className="mr-3">Seçili dosya: {selectedAttachments.length}</span>
+              )}
+              {typeof contextPercentage === 'number' && (
+                <span>Bağlam kullanımı: %{Math.round(contextPercentage)}</span>
+              )}
+            </div>
+          )}
           {/* Selected Attachments */}
           {selectedAttachments.length > 0 && (
             <div className="mb-3">
@@ -735,7 +826,7 @@ function AIChatPanel({
                 value={inputValue}
                 onChange={handleInputChange}
                 onKeyDown={handleKeyDown}
-                placeholder="LawInAI asistanına sorunuzu yazın... (@ ile dosya ekleyin)"
+                placeholder={`${getPlaceholderByMode()} (@ ile dosya ekleyin)`}
                 className="w-full resize-none border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-xs bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 rows={textareaRows}
                 style={{ minHeight: '40px', maxHeight: '300px' }}
@@ -840,6 +931,18 @@ function AIChatPanel({
       <ScrollArea ref={scrollAreaRef} className="flex-1 p-4">
         <div className="space-y-4">
           {messages.map((message, index) => renderMessage(message, index))}
+
+          {/* Applied Rules tooltip/panel */}
+          {showRules && Array.isArray(appliedRules) && appliedRules.length > 0 && (
+            <div className="p-2 border border-gray-200 dark:border-gray-700 rounded bg-white dark:bg-gray-800 text-xs">
+              <div className="font-medium mb-1">Uygulanan Kurallar</div>
+              <ul className="list-disc list-inside space-y-0.5">
+                {appliedRules.map((r, i) => (
+                  <li key={i}>{r.name}</li>
+                ))}
+              </ul>
+            </div>
+          )}
           
           {/* Streaming Message */}
           {renderStreamingMessage()}
@@ -861,6 +964,17 @@ function AIChatPanel({
       {/* Input Area - Show at bottom if messages exist */}
       {messages.length > 0 && (
         <div className="p-4 border-t border-gray-200 dark:border-gray-700">
+          {/* Özetle modunda context yüzdesi ve dosya sayısı göstergesi */}
+          {mode === 'ozetle' && (
+            <div className="mb-2 text-[10px] text-gray-600 dark:text-gray-400">
+              {selectedAttachments.length > 0 && (
+                <span className="mr-3">Seçili dosya: {selectedAttachments.length}</span>
+              )}
+              {typeof contextPercentage === 'number' && (
+                <span>Bağlam kullanımı: %{Math.round(contextPercentage)}</span>
+              )}
+            </div>
+          )}
           {/* Edit Mode Info */}
           {editMode && (
             <div className="mb-3 p-2 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg">
@@ -907,7 +1021,7 @@ function AIChatPanel({
                 value={inputValue}
                 onChange={handleInputChange}
                 onKeyDown={handleKeyDown}
-                placeholder={editMode ? "Mesajınızı düzenleyin..." : "LawInAI asistanına sorunuzu yazın... (@ ile dosya ekleyin)"}
+                placeholder={getPlaceholderByMode() + ' (@ ile dosya ekleyin)'}
                 className={`w-full resize-none border rounded-lg px-3 py-2 text-xs bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:border-transparent ${
                   editMode 
                     ? 'border-orange-300 dark:border-orange-600 focus:ring-orange-500' 

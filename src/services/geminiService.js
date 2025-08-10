@@ -3,6 +3,8 @@ import udfService from './udfService';
 import ragService from './ragService';
 import aiTrainingService from './aiTrainingService';
 import cacheService from './cacheService';
+import systemMessageBuilder from './systemMessageBuilder';
+import { getSystemMessageByMode, completionOptionsByMode } from '@/llm/systemMessagesLegal';
 
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 const MODEL_NAME = import.meta.env.VITE_GEMINI_MODEL || 'gemini-2.5-pro';
@@ -49,6 +51,7 @@ class GeminiService {
     this.chat = null;
     this.isInitialized = false;
     this.conversationId = null;
+    this.appliedRules = [];
   }
 
   // Desteklenen dosya türlerini kontrol et
@@ -85,11 +88,11 @@ class GeminiService {
   // Dilekçe önerisi algılama
   isDocumentGenerationRequest(message) {
     const docKeywords = [
-      'dilekçe', 'dava', 'başvuru', 'petition', 'yazı', 'belge', 'document',
-      'hazırla', 'oluştur', 'yaz', 'prepare', 'create', 'write', 'draft',
-      'boşanma', 'divorce', 'miras', 'inheritance', 'kira', 'rent',
+      'dilekçe', 'dava', 'başvuru', 'petition', 'yazı', 'belge', 'metin',
+      'hazırla', 'oluştur', 'yaz', 'prepare', 'create', 'metni', 'draft',
+      'boşanma', 'düzenle', 'ayarla', 'düzelt', 'revize',
       'iş', 'labor', 'ceza', 'criminal', 'ticaret', 'commercial',
-      'değiştir', 'ekle', 'çıkar', 'güncelle', 'revise', 'modify', 'edit'
+      'değiştir', 'ekle', 'çıkar', 'güncelle', 'dilekçesi', 'sözleşme', 'sözleşmesi'
     ];
     
     return docKeywords.some(keyword => 
@@ -207,7 +210,7 @@ class GeminiService {
   }
 
   // Chat'i başlat
-  async startChat(historyMessages = []) {
+  async startChat(historyMessages = [], mode = 'sor') {
     try {
       // UI mesajlarını Gemini chat geçmiş formatına dönüştür
       const mappedHistory = Array.isArray(historyMessages)
@@ -219,9 +222,22 @@ class GeminiService {
             }))
         : [];
 
+      // Build system message using rules engine
+      const base = getSystemMessageByMode(mode) || systemMessageBuilder.getBaseSystemMessage('chat');
+      const { systemMessage, appliedRules } = await systemMessageBuilder.attachRulesToSystemMessage(base, '', [], {});
+      this.appliedRules = appliedRules || [];
+
+      const systemHistory = systemMessage ? [{ role: 'user', parts: [{ text: `Sistem: ${systemMessage}` }] }] : [];
+
+      const modeCfg = completionOptionsByMode(mode) || {};
+      const genCfg = {
+        ...generationConfig,
+        ...(typeof modeCfg.temperature === 'number' ? { temperature: modeCfg.temperature } : {}),
+        ...(typeof modeCfg.maxOutputTokens === 'number' ? { maxOutputTokens: modeCfg.maxOutputTokens } : {}),
+      };
       this.chat = this.model.startChat({
-        history: mappedHistory,
-        generationConfig,
+        history: [...systemHistory, ...mappedHistory],
+        generationConfig: genCfg,
         safetySettings,
       });
       this.isInitialized = true;
@@ -236,16 +252,16 @@ class GeminiService {
   }
 
   // Mevcut chat yoksa, verilen geçmiş ile başlat
-  async ensureChat(historyMessages = []) {
+  async ensureChat(historyMessages = [], mode = 'sor') {
     if (!this.isInitialized || !this.chat) {
-      await this.startChat(historyMessages);
+      await this.startChat(historyMessages, mode);
     }
   }
 
   // Mesaj gönder (dosya desteği ile)
-  async sendMessage(message, attachments = [], useRAG = true, historyMessages = null) {
+  async sendMessage(message, attachments = [], useRAG = true, historyMessages = null, mode = 'sor') {
     try {
-      await this.ensureChat(historyMessages || []);
+      await this.ensureChat(historyMessages || [], mode);
 
       // EĞİTİM VERİLERİNİ ENTEGRE ET
       const trainingData = aiTrainingService.trainingData;
@@ -297,6 +313,14 @@ class GeminiService {
       
       // Metin mesajını ekle
       if (enhancedMessage && enhancedMessage.trim()) {
+        // Build system message with context-based rules
+        const base = getSystemMessageByMode(mode) || systemMessageBuilder.getBaseSystemMessage('chat');
+        const contextItems = (attachments || []).map(f => ({ path: f.path || f.name, name: f.name }));
+        const { systemMessage, appliedRules } = await systemMessageBuilder.attachRulesToSystemMessage(base, message, contextItems, {});
+        this.appliedRules = appliedRules || [];
+        if (systemMessage) {
+          parts.push({ text: `Sistem: ${systemMessage}` });
+        }
         // Dilekçe önerisi için özel prompt ekle
         const isDocumentRequest = this.isDocumentGenerationRequest(message);
         let finalMessage = enhancedMessage;
@@ -308,7 +332,7 @@ class GeminiService {
         // Eğer bu bir takip/güncelleme isteği ise, geçmişteki son dilekçeyi ek bağlam olarak ver
         const lastDoc = this.isFollowUpEditRequest(message) ? this.getLastDocumentFromHistory(historyMessages || []) : null;
         if (lastDoc) {
-          finalMessage = `Aşağıdaki mevcut dilekçeyi verilen talimatlara göre GÜNCELLE. Yapılması istenen değişiklikleri uygula ve TAM GÜNCELLENMİŞ metni ver. Ek açıklama ekleme.\n\nTalimatlar:\n${enhancedMessage}\n\nMevcut Dilekçe (GÜNCELLENECEK):\n\n\`\`\`dilekce\n${lastDoc.substring(0, 30000)}\n\`\`\`\n`;
+          finalMessage = `Aşağıdaki mevcut dilekçeye verilen talimatları uygula. SADECE DEĞİŞTİRİLEN PARAGRAF(LARI) döndür. Tüm dilekçeyi tekrar yazma, sadece değişen bölümleri ver.\n\nTalimatlar:\n${enhancedMessage}\n\nMevcut Dilekçe:\n\n\`\`\`dilekce\n${lastDoc.substring(0, 30000)}\n\`\`\`\n\nÖnemli: Yanıtında sadece değiştirilen paragraf(lar)ı \`\`\`dilekce ve \`\`\` etiketleri arasında ver. Tüm dilekçeyi tekrar yazma.`;
         }
         
         parts.push({
@@ -447,7 +471,7 @@ class GeminiService {
   }
 
   // RAG ile mesaj gönder
-  async sendMessageWithRAG(message, attachments = [], historyMessages = []) {
+  async sendMessageWithRAG(message, attachments = [], historyMessages = [], mode = 'sor') {
     try {
       console.log('RAG ile mesaj gönderiliyor...');
       
@@ -510,11 +534,15 @@ class GeminiService {
       const finalResponse = ragResponse.response + enhancedRAGResponse;
       
       // RAG yanıtını chat'e gönder (opsiyonel - geçmiş için)
-      await this.ensureChat(historyMessages || []);
+      await this.ensureChat(historyMessages || [], mode);
       
-      const result = await this.chat.sendMessage({
-        text: `Kullanıcı sorusu: ${message}\n\nRAG yanıtı: ${finalResponse}`
-      });
+      // Prepend system message
+      const base = getSystemMessageByMode(mode) || systemMessageBuilder.getBaseSystemMessage('chat');
+      const contextItems = (attachments || []).map(f => ({ path: f.path || f.name, name: f.name }));
+      const { systemMessage, appliedRules } = await systemMessageBuilder.attachRulesToSystemMessage(base, message, contextItems, {});
+      this.appliedRules = appliedRules || [];
+      const sysText = systemMessage ? `Sistem: ${systemMessage}\n\n` : '';
+      const result = await this.chat.sendMessage({ text: `${sysText}Kullanıcı sorusu: ${message}\n\nRAG yanıtı: ${finalResponse}` });
       
       const response = await result.response;
 
@@ -552,15 +580,17 @@ class GeminiService {
   }
 
   // Streaming mesaj gönder
-  async sendMessageStream(message, attachments = [], onChunk, useRAG = true, historyMessages = []) {
+  async sendMessageStream(message, attachments = [], onChunk, onProgress, onThought, useRAG = true, historyMessages = [], mode = 'sor') {
     try {
-      await this.ensureChat(historyMessages || []);
+      await this.ensureChat(historyMessages || [], mode);
+      if (onProgress) onProgress('Sohbet hazırlanıyor');
 
       // EĞİTİM VERİLERİNİ ENTEGRE ET (Streaming için)
       const trainingData = aiTrainingService.trainingData;
       let enhancedMessage = message;
       
       if (trainingData && trainingData.length > 0) {
+        if (onProgress) onProgress('Eğitim verileri entegre ediliyor');
         console.log(`Streaming için eğitim verileri entegre ediliyor: ${trainingData.length} parça`);
         
         // En alakalı 3 eğitim parçasını seç (basit benzerlik kontrolü)
@@ -583,6 +613,7 @@ class GeminiService {
           enhancedMessage = `Aşağıdaki eğitim verilerini kullanarak yanıt ver. Bu bilgiler Türk hukuk sistemi ve mevzuatı hakkında güvenilir kaynaklardan alınmıştır:\n\n${trainingContext}\n\nKullanıcı Sorusu: ${message}\n\nLütfen eğitim verilerindeki bilgileri kullanarak detaylı ve doğru bir yanıt ver.`;
           
           console.log(`Streaming için ${relevantChunks.length} eğitim parçası entegre edildi`);
+          if (onThought) onThought('Eğitim verilerinden en alakalı bölümler seçildi.');
         } else {
           // Alakalı parça bulunamadıysa genel eğitim verilerini kullan
           const generalChunks = trainingData.slice(0, 2);
@@ -593,19 +624,35 @@ class GeminiService {
           enhancedMessage = `Aşağıdaki genel eğitim verilerini de göz önünde bulundurarak yanıt ver:\n\n${trainingContext}\n\nKullanıcı Sorusu: ${message}`;
           
           console.log(`Streaming için ${generalChunks.length} genel eğitim parçası entegre edildi`);
+          if (onThought) onThought('Genel eğitim verileri bağlama eklendi.');
         }
       }
 
       // RAG modu aktifse ve doküman varsa RAG kullan
       if (useRAG && attachments && attachments.length > 0) {
         console.log('RAG streaming modu ile mesaj gönderiliyor...');
-        return await this.sendMessageStreamWithRAG(enhancedMessage, attachments, onChunk, historyMessages || []);
+        return await this.sendMessageStreamWithRAG(
+          enhancedMessage,
+          attachments,
+          onChunk,
+          onProgress,
+          onThought,
+          historyMessages || []
+        );
       }
 
       const parts = [];
       
       // Metin mesajını ekle
       if (enhancedMessage && enhancedMessage.trim()) {
+        // Build system message with context-based rules
+        const base = getSystemMessageByMode(mode) || systemMessageBuilder.getBaseSystemMessage('chat');
+        const contextItems = (attachments || []).map(f => ({ path: f.path || f.name, name: f.name }));
+        const { systemMessage, appliedRules } = await systemMessageBuilder.attachRulesToSystemMessage(base, message, contextItems, {});
+        this.appliedRules = appliedRules || [];
+        if (systemMessage) {
+          parts.push({ text: `Sistem: ${systemMessage}` });
+        }
         // Dilekçe önerisi için özel prompt ekle
         const isDocumentRequest = this.isDocumentGenerationRequest(message);
         let finalMessage = enhancedMessage;
@@ -617,7 +664,7 @@ class GeminiService {
         // Takip/güncelleme isteği ise, geçmiş son dilekçeyi bağlama ekle
         const lastDoc = this.isFollowUpEditRequest(message) ? this.getLastDocumentFromHistory(historyMessages || []) : null;
         if (lastDoc) {
-          finalMessage = `Aşağıdaki mevcut dilekçeyi verilen talimatlara göre GÜNCELLE. Yapılması istenen değişiklikleri uygula ve TAM GÜNCELLENMİŞ metni ver. Ek açıklama ekleme.\n\nTalimatlar:\n${enhancedMessage}\n\nMevcut Dilekçe (GÜNCELLENECEK):\n\n\`\`\`dilekce\n${lastDoc.substring(0, 30000)}\n\`\`\`\n`;
+          finalMessage = `Aşağıdaki mevcut dilekçeye verilen talimatları uygula. SADECE DEĞİŞTİRİLEN PARAGRAF(LARI) döndür. Tüm dilekçeyi tekrar yazma, sadece değişen bölümleri ver.\n\nTalimatlar:\n${enhancedMessage}\n\nMevcut Dilekçe:\n\n\`\`\`dilekce\n${lastDoc.substring(0, 30000)}\n\`\`\`\n\nÖnemli: Yanıtında sadece değiştirilen paragraf(lar)ı \`\`\`dilekce ve \`\`\` etiketleri arasında ver. Tüm dilekçeyi tekrar yazma.`;
         }
         
         parts.push({
@@ -630,8 +677,10 @@ class GeminiService {
         for (const file of attachments) {
           if (this.isSupportedFileType(file.type)) {
             try {
+              if (onProgress) onProgress(`"${file.name}" dosyası inceleniyor`);
               const filePart = await this.fileToGenerativePart(file);
               parts.push(filePart);
+              if (onThought) onThought(`"${file.name}" ön işlemeyi tamamladı.`);
             } catch (error) {
               console.error(`Error processing file ${file.name}:`, error);
             }
@@ -671,11 +720,13 @@ class GeminiService {
           }
           if (contextParts.length > 0) {
             const systemInstruction = 'Türk hukuk sistemi bağlamında uzman yardımcı olarak yanıt ver; bağlamdaki bilgileri önceliklendir.';
+            if (onProgress) onProgress('Bağlam oluşturuluyor');
             await cacheService.createCachedContent({
               conversationId,
               contextParts,
               systemInstruction,
             });
+            if (onThought) onThought('Bağlam oluşturuldu.');
           }
         }
 
@@ -688,9 +739,11 @@ class GeminiService {
         });
 
         if (cacheTry && cacheTry.text) {
+          if (onProgress) onProgress('Yanıt hazırlanıyor');
           if (onChunk) {
             onChunk(cacheTry.text, cacheTry.text);
           }
+          if (onThought) onThought('Yanıt taslağı oluşturuluyor...');
           return {
             text: cacheTry.text,
             usageMetadata: cacheTry.usageMetadata,
@@ -703,6 +756,7 @@ class GeminiService {
       // Streaming için önbellek denemesi: API, stream + cache birlikte resmi olarak sunulmadığından
       // burada doğrudan stream'e devam ediyoruz.
       const result = await this.chat.sendMessageStream(parts);
+      if (onProgress) onProgress('Değerlendirme yapılıyor');
       let fullText = '';
       
       for await (const chunk of result.stream) {
@@ -713,6 +767,8 @@ class GeminiService {
           onChunk(chunkText, fullText);
         }
       }
+      if (onThought) onThought('Yanıt sonlandırılıyor...');
+      if (onProgress) onProgress('Yanıt hazırlanıyor');
       
       // Streaming sonrası yanıtı da kısa süreli cache'e yaz
       try {
@@ -746,9 +802,10 @@ class GeminiService {
   }
 
   // RAG ile streaming mesaj gönder
-  async sendMessageStreamWithRAG(message, attachments = [], onChunk, historyMessages = []) {
+  async sendMessageStreamWithRAG(message, attachments = [], onChunk, onProgress, onThought, historyMessages = [], mode = 'sor') {
     try {
       console.log('RAG streaming ile mesaj gönderiliyor...');
+      if (onProgress) onProgress('RAG modu aktif');
       
       // EĞİTİM VERİLERİNİ RAG STREAMING YANITINA ENTEGRE ET
       const trainingData = aiTrainingService.trainingData;
@@ -785,6 +842,7 @@ class GeminiService {
         for (const file of attachments) {
           if (this.isSupportedFileType(file.type)) {
             try {
+              if (onProgress) onProgress(`"${file.name}" indeksleniyor`);
               const fileContent = await this.fileToGenerativePart(file);
               const document = {
                 id: file.id || Date.now() + Math.random(),
@@ -795,6 +853,8 @@ class GeminiService {
               
               await ragService.addDocument(document);
               console.log(`Dosya RAG sistemine eklendi: ${file.name}`);
+              if (onProgress) onProgress(`"${file.name}" eklendi`);
+              if (onThought) onThought(`"${file.name}" RAG deposuna eklendi.`);
             } catch (error) {
               console.error(`RAG dosya ekleme hatası: ${file.name}`, error);
             }
@@ -803,23 +863,35 @@ class GeminiService {
       }
 
       // RAG ile yanıt oluştur
+      if (onProgress) onProgress('İlgili içerik aranıyor');
       const ragResponse = await ragService.queryRAG(message);
+      if (onThought) onThought('İlgili içeriğe ulaşıldı, değerlendirme başlıyor.');
       
       // Eğitim verilerini RAG yanıtına ekle
       const finalResponseText = ragResponse.response + enhancedRAGResponse;
       
       // RAG yanıtını streaming olarak gönder (context için geçmişi koru)
       let currentText = '';
+      if (onProgress) onProgress('Değerlendirme yapılıyor');
       
       // Karakter karakter streaming simülasyonu
-      for (let i = 0; i < finalResponseText.length; i++) {
-        currentText += finalResponseText[i];
+      // Prepend system message to streaming as simulated first chunk
+      const base = getSystemMessageByMode(mode) || systemMessageBuilder.getBaseSystemMessage('chat');
+      const contextItems = (attachments || []).map(f => ({ path: f.path || f.name, name: f.name }));
+      const { systemMessage, appliedRules } = await systemMessageBuilder.attachRulesToSystemMessage(base, message, contextItems, {});
+      this.appliedRules = appliedRules || [];
+      let seed = systemMessage ? `Sistem: ${systemMessage}\n\n` : '';
+      let streamingAccumText = '';
+      for (let i = 0; i < (seed + finalResponseText).length; i++) {
+        streamingAccumText += (seed + finalResponseText)[i];
         if (onChunk) {
-          onChunk(finalResponseText[i], currentText);
+          onChunk((seed + finalResponseText)[i], streamingAccumText);
         }
         // Küçük gecikme ile streaming efekti
         await new Promise(resolve => setTimeout(resolve, 10));
       }
+      if (onThought) onThought('Yanıt sonlandırılıyor...');
+      if (onProgress) onProgress('Yanıt hazırlanıyor');
       
       return {
         text: finalResponseText,

@@ -1,6 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { GlobalWorkerOptions, getDocument } from 'pdfjs-dist';
 import Tiff from 'tiff.js';
 import mammoth from 'mammoth/mammoth.browser';
+
+// PDF.js worker ayarı (yerel worker)
+GlobalWorkerOptions.workerSrc = new URL(
+  'pdfjs-dist/build/pdf.worker.min.mjs',
+  import.meta.url
+).toString();
 
 const FileViewer = ({ fileUrl, fileName, fileType }) => {
   const [loading, setLoading] = useState(true);
@@ -14,6 +21,114 @@ const FileViewer = ({ fileUrl, fileName, fileType }) => {
   const isDOCX = normalizedFileType === 'docx';
   const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(normalizedFileType);
   const isTIFF = ['tiff', 'tif'].includes(normalizedFileType);
+
+  // PDF states
+  const pdfCanvasRef = useRef(null);
+  const [pdfDoc, setPdfDoc] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(0);
+  const [scale, setScale] = useState(1.2);
+  const [currentRenderTask, setCurrentRenderTask] = useState(null);
+  const isRenderingRef = useRef(false);
+  const queuedRenderRef = useRef(null);
+
+  // PDF yükleme
+  useEffect(() => {
+    if (isPDF && fileUrl) {
+      loadPdf();
+    }
+  }, [isPDF, fileUrl]);
+
+  const loadPdf = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      let arrayBuffer;
+      if (typeof window !== 'undefined' && window.electronAPI && fileUrl?.startsWith('file://')) {
+        // Electron: dosyayı base64 olarak oku
+        let path = fileUrl.replace(/^file:\/\/\/?/, '').replace(/^\/([A-Za-z]:)/, '$1');
+        path = decodeURIComponent(path);
+        const base64 = await window.electronAPI.readFileAsBase64(path);
+        const binaryString = atob(base64);
+        const len = binaryString.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        arrayBuffer = bytes.buffer;
+      } else {
+        // Web: fetch ile al
+        const response = await fetch(fileUrl);
+        arrayBuffer = await response.arrayBuffer();
+      }
+
+      const loadingTask = getDocument({ data: arrayBuffer });
+      const pdf = await loadingTask.promise;
+      setPdfDoc(pdf);
+      setTotalPages(pdf.numPages);
+      await renderPageQueued(pdf, 1, scale);
+      setLoading(false);
+    } catch (err) {
+      console.error('PDF loading error:', err);
+      setError('PDF dosyası yüklenemedi: ' + err.message);
+      setLoading(false);
+    }
+  };
+
+  const renderPageQueued = async (pdf, pageNum, scaleValue) => {
+    // Eğer şu an render varsa, iptal etmeye çalış ve sıraya al
+    if (isRenderingRef.current) {
+      queuedRenderRef.current = { pdf, pageNum, scaleValue };
+      if (currentRenderTask) {
+        try { currentRenderTask.cancel(); } catch (_) {}
+      }
+      return;
+    }
+
+    isRenderingRef.current = true;
+    try {
+      const page = await pdf.getPage(pageNum);
+      const viewport = page.getViewport({ scale: scaleValue });
+      const canvas = pdfCanvasRef.current;
+      if (!canvas) { isRenderingRef.current = false; return; }
+
+      const context = canvas.getContext('2d');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      context.clearRect(0, 0, canvas.width, canvas.height);
+
+      const renderTask = page.render({ canvasContext: context, viewport });
+      setCurrentRenderTask(renderTask);
+      await renderTask.promise.catch(() => {});
+      setCurrentRenderTask(null);
+    } catch (err) {
+      if (err && err.name !== 'RenderingCancelledException') {
+        console.error('Page render error:', err);
+        setError('PDF sayfası render edilemedi');
+      }
+    } finally {
+      isRenderingRef.current = false;
+      if (queuedRenderRef.current) {
+        const next = queuedRenderRef.current;
+        queuedRenderRef.current = null;
+        // Zincirleme şekilde bir sonraki render'ı başlat
+        await renderPageQueued(next.pdf, next.pageNum, next.scaleValue);
+      }
+    }
+  };
+
+  const goToPage = async (pageNum) => {
+    if (!pdfDoc || pageNum < 1 || pageNum > totalPages) return;
+    setCurrentPage(pageNum);
+    await renderPageQueued(pdfDoc, pageNum, scale);
+  };
+
+  const changeScale = async (newScale) => {
+    if (!pdfDoc) return;
+    setScale(newScale);
+    await renderPageQueued(pdfDoc, currentPage, newScale);
+  };
 
   // TIFF dosyası için özel işlem
   useEffect(() => {
@@ -30,12 +145,10 @@ const FileViewer = ({ fileUrl, fileName, fileType }) => {
       const response = await fetch(fileUrl);
       const arrayBuffer = await response.arrayBuffer();
       
-      // TIFF dosyasını parse et
       const tiff = new Tiff({ buffer: arrayBuffer });
       const canvas = tiff.toCanvas();
       
       if (canvasRef.current && canvas) {
-        // Canvas içeriğini kopyala
         const ctx = canvasRef.current.getContext('2d');
         canvasRef.current.width = canvas.width;
         canvasRef.current.height = canvas.height;
@@ -61,16 +174,6 @@ const FileViewer = ({ fileUrl, fileName, fileType }) => {
     setError('Resim yüklenemedi');
   };
 
-  const handleIframeLoad = () => {
-    setLoading(false);
-    setError(null);
-  };
-
-  const handleIframeError = () => {
-    setLoading(false);
-    setError('PDF yüklenemedi');
-  };
-
   // DOCX/Word dosyaları için HTML'e dönüştürme
   const [docxHtml, setDocxHtml] = useState('');
   useEffect(() => {
@@ -82,8 +185,8 @@ const FileViewer = ({ fileUrl, fileName, fileType }) => {
 
         let arrayBuffer;
         if (typeof window !== 'undefined' && window.electronAPI && fileUrl.startsWith('file://')) {
-          // Electron: yerel dosyayı base64 olarak oku ve ArrayBuffer'a çevir
-          const path = fileUrl.replace('file://', '');
+          let path = fileUrl.replace(/^file:\/\/\/?/, '').replace(/^\/([A-Za-z]:)/, '$1');
+          path = decodeURIComponent(path);
           const base64 = await window.electronAPI.readFileAsBase64(path);
           const binaryString = atob(base64);
           const len = binaryString.length;
@@ -93,7 +196,6 @@ const FileViewer = ({ fileUrl, fileName, fileType }) => {
           }
           arrayBuffer = bytes.buffer;
         } else {
-          // Web: blob URL üzerinden fetch
           const response = await fetch(fileUrl);
           arrayBuffer = await response.arrayBuffer();
         }
@@ -121,13 +223,65 @@ const FileViewer = ({ fileUrl, fileName, fileType }) => {
   const renderViewer = () => {
     if (isPDF) {
       return (
-        <iframe
-          src={fileUrl}
-          className="w-full h-full border-none"
-          onLoad={handleIframeLoad}
-          onError={handleIframeError}
-          title={fileName || 'PDF Viewer'}
-        />
+        <div className="flex flex-col h-full">
+          {/* PDF Toolbar */}
+          <div className="flex items-center justify-between px-4 py-2 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+            <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+              {fileName || 'PDF Belgesi'}
+            </div>
+            <div className="flex items-center gap-2">
+              <button 
+                className="px-2 py-1 text-xs border rounded hover:bg-gray-50 dark:hover:bg-gray-700"
+                onClick={() => changeScale(Math.max(0.5, scale - 0.1))}
+              >
+                -
+              </button>
+              <span className="text-xs text-gray-600 dark:text-gray-300 min-w-[40px] text-center">
+                {Math.round(scale * 100)}%
+              </span>
+              <button 
+                className="px-2 py-1 text-xs border rounded hover:bg-gray-50 dark:hover:bg-gray-700"
+                onClick={() => changeScale(Math.min(3, scale + 0.1))}
+              >
+                +
+              </button>
+              <div className="w-px h-4 bg-gray-300 dark:bg-gray-600 mx-1" />
+              <button 
+                disabled={currentPage <= 1}
+                className="px-2 py-1 text-xs border rounded disabled:opacity-50 hover:bg-gray-50 dark:hover:bg-gray-700"
+                onClick={() => goToPage(currentPage - 1)}
+              >
+                Önceki
+              </button>
+              <span className="text-xs text-gray-600 dark:text-gray-300 min-w-[50px] text-center">
+                {currentPage}/{totalPages || '?'}
+              </span>
+              <button 
+                disabled={currentPage >= totalPages}
+                className="px-2 py-1 text-xs border rounded disabled:opacity-50 hover:bg-gray-50 dark:hover:bg-gray-700"
+                onClick={() => goToPage(currentPage + 1)}
+              >
+                Sonraki
+              </button>
+              <a 
+                href={fileUrl} 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                className="ml-2 px-3 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600"
+              >
+                Dışarıda Aç
+              </a>
+            </div>
+          </div>
+          
+          {/* PDF Content - Canvas */}
+          <div className="flex-1 flex items-center justify-center bg-gray-50 dark:bg-gray-900 overflow-auto p-4">
+            <canvas
+              ref={pdfCanvasRef}
+              className="max-w-full max-h-full shadow-lg bg-white"
+            />
+          </div>
+        </div>
       );
     }
 
@@ -187,8 +341,8 @@ const FileViewer = ({ fileUrl, fileName, fileType }) => {
 
   return (
     <div className="h-full flex flex-col bg-gray-50 dark:bg-gray-900">
-      {/* File Toolbar - PDF dosyaları için gizli */}
-       {!isPDF && !isDOCX && (
+      {/* File Toolbar - PDF ve DOCX için gizli */}
+      {!isPDF && !isDOCX && (
         <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">

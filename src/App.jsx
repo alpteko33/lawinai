@@ -476,6 +476,18 @@ function App() {
         if (exists) return prev;
         return [...prev, newTab];
       });
+      // Immediately reflect new tab's data in editor to avoid stale state
+      if (newTab.type === 'document') {
+        setCurrentDocument(prev => ({
+          ...prev,
+          title: newTab.title,
+          content: newTab.data?.content || '',
+          hasChanges: newTab.data?.hasChanges || false,
+          aiChanges: newTab.data?.aiChanges || []
+        }));
+      }
+      setActiveTabId(tabId);
+      return;
     }
     
     // Update currentDocument to match the active tab's content
@@ -664,7 +676,10 @@ function App() {
           data: { 
             fileId: file.id,
             isUDF: true,
-            udfData: udfData
+            udfData: udfData,
+            content: udfData.content,
+            hasChanges: false,
+            aiChanges: []
           }
         };
         
@@ -708,8 +723,10 @@ function App() {
       // Handle different file sources (Electron vs Web)
       let fileUrl;
       if (file.path) {
-        // Electron - convert to file:// URL
-        fileUrl = `file://${file.path}`;
+        // Electron - convert to proper file:/// URL with forward slashes and encoding
+        const normalizedPath = String(file.path).replace(/\\/g, '/');
+        const encodedPath = encodeURI(normalizedPath);
+        fileUrl = `file:///${encodedPath}`;
       } else if (file.file) {
         // Web - create blob URL
         fileUrl = URL.createObjectURL(file.file);

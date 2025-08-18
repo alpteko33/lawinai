@@ -302,7 +302,7 @@ function DocumentEditor({
             <TipTapEditor
               content={content}
               onChange={handleTextChange}
-              placeholder="Hukuki metninizi buraya yazın..."
+              placeholder=""
               className="h-full"
               isAIProcessing={isAIProcessing}
               pendingContent={pendingContent}

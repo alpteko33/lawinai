@@ -294,7 +294,7 @@ const DiffPending = Mark.create({
 const TipTapEditor = React.memo(({ 
   content, 
   onChange, 
-  placeholder = "Hukuki metninizi buraya yazın...",
+  placeholder = "",
   className = "",
   style = {},
   isAIProcessing = false,

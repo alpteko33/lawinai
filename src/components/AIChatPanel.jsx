@@ -66,12 +66,12 @@ function AIChatPanel({
     if (editMode) return 'Mesajınızı düzenleyin...';
     switch (mode) {
       case 'yazdir':
-        return 'Hangi hukuki metni, hangi taraflar için ve hangi kapsamda yazdırmak istersiniz?';
+        return '';
       case 'ozetle':
-        return 'Özetlenecek dosyaları/klasörleri seçin veya içerik yapıştırın.';
+        return '';
       case 'sor':
       default:
-        return 'Sorunuzu net ve kısa yazın. Gerekirse olayın tarihlerini belirtin.';
+        return '';
     }
   };
 
@@ -674,10 +674,6 @@ function AIChatPanel({
         </div>
         
         <div className="flex items-center space-x-2">
-          {/* Mode Select */}
-          <ModeSelect />
-
-
           {/* Edit Mode Indicator */}
           {editMode && (
             <div className="flex items-center space-x-2 mr-2">
@@ -826,7 +822,7 @@ function AIChatPanel({
                 value={inputValue}
                 onChange={handleInputChange}
                 onKeyDown={handleKeyDown}
-                placeholder={`${getPlaceholderByMode()} (@ ile dosya ekleyin)`}
+                placeholder={getPlaceholderByMode()}
                 className="w-full resize-none border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-xs bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 rows={textareaRows}
                 style={{ minHeight: '40px', maxHeight: '300px' }}
@@ -924,6 +920,11 @@ function AIChatPanel({
               <Send className="w-4 h-4" />
             </Button>
           </div>
+          
+          {/* Mode Select - Input alanının altında */}
+          <div className="mt-3 flex items-center justify-center">
+            <ModeSelect />
+          </div>
         </div>
       )}
 
@@ -964,6 +965,7 @@ function AIChatPanel({
       {/* Input Area - Show at bottom if messages exist */}
       {messages.length > 0 && (
         <div className="p-4 border-t border-gray-200 dark:border-gray-700">
+          {/* Mode Select - Input alanının üstünde */}
           {/* Özetle modunda context yüzdesi ve dosya sayısı göstergesi */}
           {mode === 'ozetle' && (
             <div className="mb-2 text-[10px] text-gray-600 dark:text-gray-400">
@@ -1021,7 +1023,7 @@ function AIChatPanel({
                 value={inputValue}
                 onChange={handleInputChange}
                 onKeyDown={handleKeyDown}
-                placeholder={getPlaceholderByMode() + ' (@ ile dosya ekleyin)'}
+                placeholder={getPlaceholderByMode()}
                 className={`w-full resize-none border rounded-lg px-3 py-2 text-xs bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:border-transparent ${
                   editMode 
                     ? 'border-orange-300 dark:border-orange-600 focus:ring-orange-500' 
@@ -1126,6 +1128,11 @@ function AIChatPanel({
             >
               <Send className="w-4 h-4" />
             </Button>
+          </div>
+          
+          {/* Mode Select - Input alanının altında */}
+          <div className="mt-3 flex items-center justify-center">
+            <ModeSelect />
           </div>
         </div>
       )}

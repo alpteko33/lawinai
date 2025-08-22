@@ -630,15 +630,7 @@ const TipTapEditor = React.memo(({
           }}
         />
 
-        {/* AI Processing Overlay */}
-        {isAIProcessing && (
-          <div className="absolute inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm flex items-center justify-center z-10">
-            <div className="flex items-center space-x-3 text-blue-600 dark:text-blue-400 bg-white/90 dark:bg-gray-800/90 px-6 py-4 rounded-xl border border-blue-200/50 dark:border-blue-700/50">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-              <span className="font-medium">AI metin oluşturuyor...</span>
-            </div>
-          </div>
-        )}
+
 
 
 

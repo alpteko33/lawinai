@@ -345,6 +345,18 @@ ipcMain.handle('fs:listWorkspaceFiles', async (event, workspacePath) => {
         const relPath = path.join(relativePath, item.name);
         
         if (item.isDirectory()) {
+          // Klasörü de listeye ekle
+          const stats = await fs.promises.stat(fullPath);
+          files.push({
+            name: item.name,
+            path: fullPath,
+            relativePath: relPath,
+            type: 'folder',
+            size: 0,
+            lastModified: stats.mtime,
+            isWorkspaceFile: true
+          });
+          
           // Alt klasörleri de tara
           await scanDirectory(fullPath, relPath);
         } else {
@@ -518,6 +530,73 @@ ipcMain.handle('fs:handleDroppedFiles', async (event, filePaths, workspacePath) 
     return { success: true, results };
   } catch (error) {
     console.error('Dropped files handling error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Dosyayı veya klasörü sil
+ipcMain.handle('fs:deleteFile', async (event, filePath) => {
+  try {
+    const fs = require('fs');
+    const stats = await fs.promises.stat(filePath);
+    
+    if (stats.isDirectory()) {
+      // Klasör ise recursive sil
+      await fs.promises.rmdir(filePath, { recursive: true });
+      console.log('Folder deleted:', filePath);
+    } else {
+      // Dosya ise unlink
+      await fs.promises.unlink(filePath);
+      console.log('File deleted:', filePath);
+    }
+    
+    return { success: true };
+  } catch (error) {
+    console.error('Delete error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Dosyayı yeniden adlandır
+ipcMain.handle('fs:renameFile', async (event, oldPath, newPath) => {
+  try {
+    const fs = require('fs');
+    await fs.promises.rename(oldPath, newPath);
+    console.log('File renamed:', oldPath, '->', newPath);
+    return { success: true, newPath };
+  } catch (error) {
+    console.error('File rename error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Klasör oluştur
+ipcMain.handle('fs:createFolder', async (event, folderPath) => {
+  try {
+    const fs = require('fs');
+    await fs.promises.mkdir(folderPath, { recursive: true });
+    console.log('Folder created:', folderPath);
+    return { success: true, path: folderPath };
+  } catch (error) {
+    console.error('Folder create error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Dosya oluştur
+ipcMain.handle('fs:createFile', async (event, filePath, content = '') => {
+  try {
+    const fs = require('fs');
+    // Hedef dizini oluştur
+    const targetDir = path.dirname(filePath);
+    await fs.promises.mkdir(targetDir, { recursive: true });
+    
+    // Dosyayı oluştur
+    await fs.promises.writeFile(filePath, content, 'utf8');
+    console.log('File created:', filePath);
+    return { success: true, path: filePath };
+  } catch (error) {
+    console.error('File create error:', error);
     return { success: false, error: error.message };
   }
 });

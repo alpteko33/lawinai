@@ -9,10 +9,21 @@ import {
   Image,
   Upload,
   Search,
-  MoreHorizontal
+  MoreHorizontal,
+  Eye,
+  Edit,
+  Copy,
+  Scissors,
+  ClipboardPaste,
+  Share,
+  Trash2,
+  RefreshCw,
+  FolderPlus,
+  FilePlus
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { ContextMenu, ContextMenuItem, ContextMenuSeparator } from '@/components/ui/context-menu';
 
 // File type icons - Enhanced with hover animations (no text color changes)
   const getFileIcon = (fileType, size = 16) => {
@@ -43,21 +54,91 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 };
 
 // File tree item component - FIXED ALIGNMENT
-const FileTreeItem = ({ item, level = 0, onFileSelect, onViewFile, selectedFile }) => {
+const FileTreeItem = ({ 
+  item, 
+  level = 0, 
+  onFileSelect, 
+  onViewFile, 
+  selectedFile,
+  onFileContextMenu,
+  onFileDrop
+}) => {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
   const isSelected = selectedFile?.id === item.id;
   
   const handleClick = () => {
     if (item.type === 'folder') {
       setIsExpanded(!isExpanded);
     } else {
+      // Tek tıklama ile sadece seç, görüntüleme yapma
       onFileSelect?.(item);
     }
   };
   
   const handleDoubleClick = () => {
     if (item.type !== 'folder') {
+      // Çift tıklama ile görüntüle
       onViewFile?.(item);
+    }
+  };
+
+  const handleContextMenu = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (onFileContextMenu) {
+      onFileContextMenu(e, item);
+    }
+  };
+
+  // Drag & Drop handlers
+  const handleDragStart = (e) => {
+    if (item.type === 'folder') return; // Klasörler sürüklenemez
+    
+    e.dataTransfer.setData('text/plain', JSON.stringify({
+      id: item.id,
+      name: item.name,
+      path: item.path,
+      type: item.type
+    }));
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e) => {
+    if (item.type !== 'folder') return;
+    
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e) => {
+    if (item.type !== 'folder') return;
+    
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Sadece element'ten çıkıldığında drag leave yap
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      setIsDragOver(false);
+    }
+  };
+
+  const handleDrop = (e) => {
+    if (item.type !== 'folder') return;
+    
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    
+    try {
+      const draggedData = JSON.parse(e.dataTransfer.getData('text/plain'));
+      if (onFileDrop && draggedData.id !== item.id) { // Kendisine drop etmeyi engelle
+        onFileDrop(draggedData, item);
+      }
+    } catch (error) {
+      console.error('Drop error:', error);
     }
   };
   
@@ -73,6 +154,8 @@ const FileTreeItem = ({ item, level = 0, onFileSelect, onViewFile, selectedFile 
           hover:bg-white/5 hover:translate-x-[1px]
           focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40
           ${isSelected ? 'bg-blue-50/10 border border-blue-400/30' : 'border border-transparent'}
+          ${item.isCut ? 'opacity-50' : 'opacity-100'}
+          ${isDragOver && item.type === 'folder' ? 'bg-blue-100/20 border-blue-400/50' : ''}
         `}
         style={{ 
           paddingLeft: `${level * 16}px`,
@@ -81,6 +164,12 @@ const FileTreeItem = ({ item, level = 0, onFileSelect, onViewFile, selectedFile 
         }}
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
+        onContextMenu={handleContextMenu}
+        draggable={item.type !== 'folder'}
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
       >
         {item.type === 'folder' ? (
           <>
@@ -122,6 +211,8 @@ const FileTreeItem = ({ item, level = 0, onFileSelect, onViewFile, selectedFile 
           onFileSelect={onFileSelect}
           onViewFile={onViewFile}
           selectedFile={selectedFile}
+          onFileContextMenu={onFileContextMenu}
+          onFileDrop={onFileDrop}
         />
       ))}
     </div>
@@ -143,7 +234,22 @@ function FileExplorer({
   onFileSelect,
   onViewFile,
   currentWorkspace,
-  selectedFile
+  selectedFile,
+  onFileContextMenu,
+  onSidebarContextMenu,
+  contextMenu,
+  onCloseContextMenu,
+  onFileDelete,
+  onFileRename,
+  onFileCopy,
+  onFileCut,
+  onFilePaste,
+  onFileShare,
+  onRefreshWorkspace,
+  onCreateNewFolder,
+  onCreateNewFile,
+  clipboard,
+  onFileDrop
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [isDragOver, setIsDragOver] = useState(false);
@@ -170,15 +276,29 @@ function FileExplorer({
         let currentLevel = tree;
         let currentPath = '';
         
-        // Her path parçası için klasör oluştur
+        // Her path parçası için klasör oluştur veya dosya ekle
         pathParts.forEach((part, index) => {
           currentPath = currentPath ? `${currentPath}/${part}` : part;
           
           if (index === pathParts.length - 1) {
-            // Bu bir dosya
-            currentLevel.push({ ...file, id: file.id || file.path });
+            // Son parça - dosya veya klasör olabilir
+            if (file.type === 'folder') {
+              // Bu bir klasör
+              let folder = currentLevel.find(item => item.name === part && item.type === 'folder');
+              if (!folder) {
+                folder = {
+                  ...file,
+                  id: file.id || file.path,
+                  children: []
+                };
+                currentLevel.push(folder);
+              }
+            } else {
+              // Bu bir dosya
+              currentLevel.push({ ...file, id: file.id || file.path });
+            }
           } else {
-            // Bu bir klasör
+            // Ara klasör
             let folder = currentLevel.find(item => item.name === part && item.type === 'folder');
             if (!folder) {
               folder = {
@@ -244,12 +364,21 @@ function FileExplorer({
   // Drag & Drop handlers
   const handleDragOver = (e) => {
     e.preventDefault();
-    setIsDragOver(true);
+    
+    // Internal file drag mı external file drag mı kontrol et
+    const hasInternalData = e.dataTransfer.types.includes('text/plain');
+    if (hasInternalData) {
+      e.dataTransfer.dropEffect = 'move';
+    } else {
+      e.dataTransfer.dropEffect = 'copy';
+      setIsDragOver(true);
+    }
   };
 
   const handleDragLeave = (e) => {
     e.preventDefault();
-    if (e.currentTarget === e.target) {
+    // Only set drag over to false if we're actually leaving the component
+    if (!e.currentTarget.contains(e.relatedTarget)) {
       setIsDragOver(false);
     }
   };
@@ -258,6 +387,22 @@ function FileExplorer({
     e.preventDefault();
     setIsDragOver(false);
     
+    // Önce internal file drop'u kontrol et
+    try {
+      const draggedData = e.dataTransfer.getData('text/plain');
+      if (draggedData) {
+        const draggedFile = JSON.parse(draggedData);
+        if (onFileDrop) {
+          // Ana dizine drop et (hedef klasör null)
+          onFileDrop(draggedFile, null);
+          return;
+        }
+      }
+    } catch (error) {
+      // JSON parse hatası - external file drop olabilir
+    }
+    
+    // External file drop
     const files = Array.from(e.dataTransfer.files);
     if (files.length > 0 && onFileUpload) {
       handleDropFiles(files);
@@ -311,9 +456,10 @@ function FileExplorer({
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
+      onContextMenu={onSidebarContextMenu}
     >
       {/* Header - CONSISTENT PADDING */}
-      <div className="flex-shrink-0 px-4 py-3 border-b border-gray-100 dark:border-gray-800 bg-white/5 dark:bg-white/5 backdrop-blur-[6px]">
+      <div className="flex-shrink-0 px-4 py-6 pb-8 border-b border-gray-100 dark:border-gray-800 bg-white/5 dark:bg-white/5 backdrop-blur-[6px]">
       <div className="flex items-center justify-between mb-2">
           <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 tracking-tight">
             {currentWorkspace ? (currentWorkspace.name || 'Workspace') : 'Dosyalar'}
@@ -382,6 +528,8 @@ function FileExplorer({
                   onFileSelect={onFileSelect}
                   onViewFile={onViewFile}
                   selectedFile={selectedFile}
+                  onFileContextMenu={onFileContextMenu}
+                  onFileDrop={onFileDrop}
                 />
               ))}
             </div>
@@ -403,6 +551,114 @@ function FileExplorer({
            </div>
          </div>
        )}
+
+      {/* Context Menu */}
+      <ContextMenu
+        isOpen={contextMenu?.isOpen}
+        onClose={onCloseContextMenu}
+        position={contextMenu?.position}
+      >
+        {contextMenu?.type === 'file' && contextMenu?.target && (
+          <>
+            {/* Dosya için menü */}
+            {contextMenu.target.type !== 'folder' && (
+              <>
+                <ContextMenuItem 
+                  icon={Eye} 
+                  onClick={() => onViewFile?.(contextMenu.target)}
+                >
+                  Görüntüle
+                </ContextMenuItem>
+                <ContextMenuSeparator />
+              </>
+            )}
+            
+            <ContextMenuItem 
+              icon={Edit} 
+              onClick={() => onFileRename?.(contextMenu.target)}
+            >
+              Yeniden Adlandır
+            </ContextMenuItem>
+            <ContextMenuItem 
+              icon={Copy} 
+              onClick={() => onFileCopy?.(contextMenu.target)}
+            >
+              Kopyala
+            </ContextMenuItem>
+            <ContextMenuItem 
+              icon={Scissors} 
+              onClick={() => onFileCut?.(contextMenu.target)}
+            >
+              Kes
+            </ContextMenuItem>
+            
+            {/* Klasör için yapıştır seçeneği */}
+            {contextMenu.target.type === 'folder' && (
+              <ContextMenuItem 
+                icon={ClipboardPaste} 
+                onClick={() => onFilePaste?.(contextMenu.target)}
+                disabled={!clipboard?.file}
+              >
+                Yapıştır
+              </ContextMenuItem>
+            )}
+            
+            {/* Dosya için paylaş seçeneği */}
+            {contextMenu.target.type !== 'folder' && (
+              <ContextMenuItem 
+                icon={Share} 
+                onClick={() => onFileShare?.(contextMenu.target)}
+              >
+                Paylaş
+              </ContextMenuItem>
+            )}
+            
+            <ContextMenuSeparator />
+            <ContextMenuItem 
+              icon={Trash2} 
+              onClick={() => onFileDelete?.(contextMenu.target)}
+              destructive
+            >
+              Sil
+            </ContextMenuItem>
+          </>
+        )}
+        
+        {contextMenu?.type === 'sidebar' && (
+          <>
+            <ContextMenuItem 
+              icon={RefreshCw} 
+              onClick={onRefreshWorkspace}
+              shortcut="F5"
+            >
+              Yenile
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+            <ContextMenuItem 
+              icon={ClipboardPaste} 
+              onClick={onFilePaste}
+              disabled={!clipboard?.file || !currentWorkspace}
+            >
+              Yapıştır
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+            <ContextMenuItem 
+              icon={FolderPlus} 
+              onClick={onCreateNewFolder}
+              disabled={!currentWorkspace}
+            >
+              Yeni Klasör
+            </ContextMenuItem>
+            <ContextMenuItem 
+              icon={FilePlus} 
+              onClick={onCreateNewFile}
+              disabled={!currentWorkspace}
+            >
+              Yeni Dosya
+            </ContextMenuItem>
+          </>
+        )}
+      </ContextMenu>
     </div>
   );
 }

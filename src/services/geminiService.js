@@ -1010,6 +1010,53 @@ class GeminiService {
       throw new Error(`Dosyalar analiz edilemedi: ${error.message}`);
     }
   }
+
+  // Chat başlığı oluşturma - Yapay zeka ile mantıklı başlık üretme
+  async generateChatTitle(userMessage) {
+    try {
+      // Kısa ve öz bir başlık oluşturmak için özel prompt
+      const titlePrompt = `
+Bu kullanıcı mesajına dayanarak kısa, öz ve açıklayıcı bir sohbet başlığı oluştur.
+Başlık maksimum 6-8 kelime olmalı ve mesajın ana konusunu yansıtmalı.
+Hukuki terimler varsa kullan, ama genel anlaşılır olsun.
+
+Kullanıcı mesajı: "${userMessage}"
+
+Sadece başlığı döndür, başka açıklama yapma.
+`;
+
+      const result = await this.model.generateContent([{
+        text: titlePrompt
+      }]);
+
+      const response = await result.response;
+      let title = response.text().trim();
+      
+      // Başlığı temizle - gereksiz karakterleri kaldır
+      title = title.replace(/^["']|["']$/g, ''); // Başındaki ve sonundaki tırnak işaretlerini kaldır
+      title = title.replace(/^\s*-\s*/, ''); // Başındaki tire işaretini kaldır
+      title = title.replace(/\n.*$/s, ''); // İlk satırdan sonrasını kaldır
+      
+      // Eğer çok uzunsa kısalt
+      const words = title.split(' ');
+      if (words.length > 8) {
+        title = words.slice(0, 8).join(' ') + '...';
+      }
+      
+      // Eğer boş veya çok kısa ise fallback kullan
+      if (!title || title.length < 3) {
+        const words = userMessage.split(' ').slice(0, 4);
+        title = words.join(' ') + (userMessage.split(' ').length > 4 ? '...' : '');
+      }
+      
+      return title;
+    } catch (error) {
+      console.error('Error generating chat title:', error);
+      // Hata durumunda eski mantığı kullan
+      const words = userMessage.split(' ').slice(0, 4);
+      return words.join(' ') + (userMessage.split(' ').length > 4 ? '...' : '');
+    }
+  }
 }
 
 const geminiService = new GeminiService();

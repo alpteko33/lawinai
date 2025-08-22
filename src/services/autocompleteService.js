@@ -43,6 +43,18 @@ async function* streamFromGemini({ promptText }) {
 }
 
 export async function streamAutocomplete({ prefix, suffix, completionId }, abortSignal) {
+  // Prefix boşsa autocomplete çalıştırma
+  if (!prefix || prefix.trim() === '') {
+    return {
+      type: 'empty',
+      async *[Symbol.asyncIterator]() {
+        // Boş iterator döndür
+      },
+      onDone: () => {},
+      onAbort: () => {},
+    };
+  }
+  
   const { prunedPrefix, prunedSuffix, system, instruction, temperature, maxTokens } = buildPrompt({ prefix, suffix });
 
   // 1) HUKUK SÖZLÜĞÜ: yerel öneriyi önce dene (anında)

@@ -1,4 +1,5 @@
-import Database from 'sqlite-async';
+import * as sqlite3 from 'sqlite3';
+import { open, Database } from 'sqlite';
 import { Mutex } from 'async-mutex';
 import path from 'path';
 import { ensureIndexDir } from '../paths/paths';
@@ -21,7 +22,10 @@ export class AutocompleteLruCache {
   async init(): Promise<void> {
     const dir = await ensureIndexDir();
     const dbPath = path.join(dir, 'autocomplete-cache.sqlite');
-    this.db = await Database.open(dbPath);
+    this.db = await open({
+      filename: dbPath,
+      driver: sqlite3.Database
+    });
     await this.db.run('PRAGMA journal_mode=WAL');
     await this.db.run('PRAGMA busy_timeout=3000');
     await this.db.run(

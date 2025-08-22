@@ -4,7 +4,7 @@ import { ChevronDown, Check } from 'lucide-react';
 import { useDispatch, useSelector } from 'react-redux';
 import { selectMode, setMode as setModeAction } from '@/renderer/redux/store';
 
-const ModeSelect = () => {
+const ModeSelect = ({ isTopPosition = false }) => {
   const dispatch = useDispatch();
   const mode = useSelector(selectMode);
   const [isOpen, setIsOpen] = useState(false);
@@ -49,7 +49,7 @@ const ModeSelect = () => {
     { key: 'ozetle', label: 'Özetle' },
   ];
 
-  const currentMode = modes.find(m => m.key === mode);
+  const currentMode = modes.find(m => m.key === mode) || modes.find(m => m.key === 'sor');
 
   const handleModeSelect = (selectedMode) => {
     dispatch(setModeAction(selectedMode));
@@ -61,33 +61,34 @@ const ModeSelect = () => {
   };
 
   return (
-    <div className="relative" ref={dropdownRef}>
-      <Button
-        variant="outline"
-        size="sm"
+    <div className="relative w-full h-full" ref={dropdownRef}>
+      <button
         onClick={toggleDropdown}
-        className="h-8 px-3 text-xs border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center space-x-2"
-        title={`Mevcut mod: ${currentMode?.label} (Cmd/Ctrl + . ile döngü)`}
+        className="w-full h-full bg-transparent flex items-center justify-center text-[12px] text-[#6E7C89] hover:text-white transition-colors"
+        title={`Mevcut mod: ${currentMode?.label || 'Sor'} (Cmd/Ctrl + . ile döngü)`}
       >
-        <span>{currentMode?.label}</span>
-        <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
-      </Button>
+        <span className="text-[12px] font-normal">{currentMode?.label || 'Sor'}</span>
+        <ChevronDown className={`w-2.5 h-2.5 ml-1 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 mt-1 w-32 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50">
+        <div className={`absolute left-0 w-28 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-[1300] ${
+          isTopPosition ? 'top-full mt-1' : 'bottom-full mb-1'
+        }`}>
           <div className="py-1">
             {modes.map((m) => (
               <button
                 key={m.key}
                 onClick={() => handleModeSelect(m.key)}
-                className={`w-full px-3 py-2 text-left text-xs hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center justify-between ${
+                onMouseDown={(e) => e.stopPropagation()}
+                className={`w-full px-2 py-1.5 text-left text-xs hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center justify-between ${
                   mode === m.key 
-                    ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300' 
+                    ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300' 
                     : 'text-gray-700 dark:text-gray-300'
                 }`}
               >
                 <span>{m.label}</span>
-                {mode === m.key && <Check className="w-3 h-3 text-purple-600" />}
+                {mode === m.key && <Check className="w-2.5 h-2.5 text-blue-600" />}
               </button>
             ))}
           </div>

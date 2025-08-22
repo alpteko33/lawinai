@@ -137,6 +137,12 @@ export function createTiptapAutocompletePlugin({ debounceMs = 180 } = {}) {
           debounceTimer = setTimeout(async () => {
             const { from, prefix, suffix } = getPrefixSuffix(view.state);
             const caretAtEnd = isCaretAtLineEnd(view.state);
+            
+            // Prefix boşsa autocomplete'i tetikleme
+            if (!prefix || prefix.trim() === '') {
+              return;
+            }
+            
             // Tek satır boş değilse göster; çok satır için satır sonu boş
             const completionId = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
 

@@ -12,6 +12,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   watchWorkspace: (workspacePath) => ipcRenderer.invoke('fs:watchWorkspace', workspacePath),
   copyToWorkspace: (sourcePath, workspacePath, fileName) => ipcRenderer.invoke('fs:copyToWorkspace', sourcePath, workspacePath, fileName),
   handleDroppedFiles: (filePaths, workspacePath) => ipcRenderer.invoke('fs:handleDroppedFiles', filePaths, workspacePath),
+  deleteFile: (filePath) => ipcRenderer.invoke('fs:deleteFile', filePath),
+  renameFile: (oldPath, newPath) => ipcRenderer.invoke('fs:renameFile', oldPath, newPath),
+  createFolder: (folderPath) => ipcRenderer.invoke('fs:createFolder', folderPath),
+  createFile: (filePath, content) => ipcRenderer.invoke('fs:createFile', filePath, content),
   
   // File watcher events için listener
   onWorkspaceFileChange: (callback) => {

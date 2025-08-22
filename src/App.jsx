@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { FileText, MessageSquare, Settings, Upload, Bot, Scale } from 'lucide-react';
 import HeaderBar from './components/HeaderBar';
+import InputDialog from './components/ui/input-dialog';
 
 import FileExplorer from './components/FileExplorer';
 import DocumentEditor from './components/DocumentEditor';
@@ -71,6 +72,7 @@ function App() {
   const [chatMessages, setChatMessages] = useState([]);
   const [chatTitle, setChatTitle] = useState('');
   const [chatHistory, setChatHistory] = useState([]);
+  const [currentSessionId, setCurrentSessionId] = useState(null); // Mevcut session ID takibi
   
   // Checkpoint system for conversation and document state
   const [checkpoints, setCheckpoints] = useState([]);
@@ -175,17 +177,30 @@ function App() {
     setTimeout(initializeApp, 1000);
   }, []);
 
-  // En son oturumu getir (uygulama açılışında)
+  // En son oturumu getir (uygulama açılışında) ve sohbet geçmişini yükle
   useEffect(() => {
     (async () => {
       try {
-        const list = await window.electronAPI?.history?.list({ limit: 1, offset: 0 });
-        if (Array.isArray(list) && list.length > 0) {
-          const latest = list[0];
+        // Sohbet geçmişini yükle
+        const historyList = await window.electronAPI?.history?.list({ limit: 10, offset: 0 });
+        if (Array.isArray(historyList)) {
+          const formattedHistory = historyList.map(item => ({
+            id: item.id,
+            title: item.title,
+            timestamp: item.updatedAt || item.createdAt,
+            messages: [] // Sadece metadata, mesajlar gerektiğinde yüklenecek
+          }));
+          setChatHistory(formattedHistory);
+        }
+
+        // En son oturumu getir
+        if (Array.isArray(historyList) && historyList.length > 0) {
+          const latest = historyList[0];
           const session = await window.electronAPI?.history?.load(latest.id);
           if (session?.messages) {
             setChatMessages(session.messages);
             setChatTitle(session.title);
+            setCurrentSessionId(session.id);
             dispatch(setSession(session));
           }
         }
@@ -454,10 +469,8 @@ function App() {
     console.log('Selected file:', file);
     setSelectedFile(file);
     
-    // Dosyayı görüntüleme modunda aç
-    if (file && file.type !== 'folder') {
-      handleViewFile(file);
-    }
+    // Tek tıklama ile sadece seç, görüntüleme yapma
+    // Görüntüleme artık sağ tıklama menüsünden veya çift tıklama ile yapılacak
   };
 
   const handleTemplateSelect = (template) => {
@@ -537,21 +550,84 @@ function App() {
     }
   };
 
+  // Mevcut sohbeti kaydetme helper fonksiyonu
+  const saveCurrentSession = async () => {
+    if (chatMessages.length === 0) return null;
+
+    try {
+      const sessionId = currentSessionId || `sess_${Date.now()}`;
+      const session = {
+        id: sessionId,
+        title: chatTitle || 'Yeni Sohbet',
+        messages: chatMessages,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      await window.electronAPI?.history?.save(session);
+      
+      // Session ID'yi güncelle
+      if (!currentSessionId) {
+        setCurrentSessionId(sessionId);
+      }
+
+      // History listesini güncelle
+      const updatedHistoryList = await window.electronAPI?.history?.list({ limit: 10, offset: 0 });
+      if (Array.isArray(updatedHistoryList)) {
+        const formattedHistory = updatedHistoryList.map(item => ({
+          id: item.id,
+          title: item.title,
+          timestamp: item.updatedAt || item.createdAt,
+          messages: [] // Sadece metadata
+        }));
+        setChatHistory(formattedHistory);
+      }
+
+      dispatch(setSession(session));
+      return session;
+    } catch (error) {
+      console.error('Sohbet kaydetme hatası:', error);
+      return null;
+    }
+  };
+
   // Load chat from history
-  const handleLoadChatFromHistory = (chatHistoryItem) => {
-    setChatMessages(chatHistoryItem.messages);
-    setChatTitle(chatHistoryItem.title);
-    setCheckpoints([]);
-    setEditMode(null);
-    setIsStreaming(false);
-    setStreamingContent('');
-    setPendingContent('');
-    setStreamingToEditor(false);
-    setApprovedChanges(new Set());
-    setRejectedChanges(new Set());
-    
-    // Clear Gemini chat history and reload with historical messages
-        geminiService.clearChat();
+  const handleLoadChatFromHistory = async (chatHistoryItem) => {
+    try {
+      // Mevcut sohbeti kaydet (eğer değişiklik varsa ve henüz kaydedilmemişse)
+      if (chatMessages.length > 0 && currentSessionId) {
+        await saveCurrentSession();
+      }
+
+      // Seçilen sohbeti yükle
+      const session = await window.electronAPI?.history?.load(chatHistoryItem.id);
+      if (session) {
+        setChatMessages(session.messages || []);
+        setChatTitle(session.title);
+        setCurrentSessionId(session.id);
+        dispatch(setSession(session));
+      } else {
+        // Fallback: metadata'dan yükle
+        setChatMessages(chatHistoryItem.messages || []);
+        setChatTitle(chatHistoryItem.title);
+        setCurrentSessionId(chatHistoryItem.id);
+      }
+
+      // State'leri temizle
+      setCheckpoints([]);
+      setEditMode(null);
+      setIsStreaming(false);
+      setStreamingContent('');
+      setPendingContent('');
+      setStreamingToEditor(false);
+      setApprovedChanges(new Set());
+      setRejectedChanges(new Set());
+      
+      // Clear Gemini chat history and reload with historical messages
+      geminiService.clearChat();
+    } catch (error) {
+      console.error('Sohbet yükleme hatası:', error);
+    }
   };
 
   // File management functions
@@ -636,6 +712,485 @@ function App() {
   const handlePasteFile = (newFile) => {
     // Handle pasted file by adding it to the files list
     setUploadedFiles(prev => [...prev, newFile]);
+  };
+
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState({
+    isOpen: false,
+    position: { x: 0, y: 0 },
+    target: null,
+    type: 'file' // 'file' or 'sidebar'
+  });
+
+  // Clipboard state for cut/copy operations
+  const [clipboard, setClipboard] = useState({
+    file: null,
+    operation: null // 'copy' or 'cut'
+  });
+
+  // Input dialog state
+  const [inputDialog, setInputDialog] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    placeholder: '',
+    defaultValue: '',
+    onConfirm: null
+  });
+
+  // Context menu handlers
+  const handleFileContextMenu = (e, file) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    setContextMenu({
+      isOpen: true,
+      position: { x: e.clientX, y: e.clientY },
+      target: file,
+      type: 'file'
+    });
+  };
+
+  const handleSidebarContextMenu = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    setContextMenu({
+      isOpen: true,
+      position: { x: e.clientX, y: e.clientY },
+      target: null,
+      type: 'sidebar'
+    });
+  };
+
+  const closeContextMenu = () => {
+    setContextMenu(prev => ({ ...prev, isOpen: false }));
+  };
+
+  // Dialog helpers
+  const openInputDialog = (title, message, placeholder, defaultValue, onConfirm) => {
+    setInputDialog({
+      isOpen: true,
+      title,
+      message,
+      placeholder,
+      defaultValue,
+      onConfirm
+    });
+  };
+
+  const closeInputDialog = () => {
+    setInputDialog(prev => ({ ...prev, isOpen: false }));
+  };
+
+  const handleDialogConfirm = (value) => {
+    if (inputDialog.onConfirm) {
+      inputDialog.onConfirm(value);
+    }
+    closeInputDialog();
+  };
+
+  // File operations
+  const handleFileDelete = async (file) => {
+    if (!file || !window.electronAPI) return;
+    
+    const confirmDelete = confirm(`"${file.name}" dosyasını silmek istediğinizden emin misiniz?`);
+    if (!confirmDelete) return;
+
+    try {
+      if (file.path) {
+        const result = await window.electronAPI.deleteFile(file.path);
+        if (result.success) {
+          // Remove from state
+          setUploadedFiles(prev => prev.filter(f => f.id !== file.id));
+          
+          // Close related tabs
+          setOpenTabs(prev => {
+            const filteredTabs = prev.filter(tab => {
+              if (tab.data?.file?.id === file.id || tab.data?.fileId === file.id) {
+                return false;
+              }
+              return true;
+            });
+            
+            // If active tab was closed, switch to another
+            if (activeTabId && !filteredTabs.find(tab => tab.id === activeTabId)) {
+              setActiveTabId(filteredTabs.length > 0 ? filteredTabs[0].id : 'doc-main');
+            }
+            
+            return filteredTabs;
+          });
+          
+          console.log('File deleted successfully:', file.name);
+          
+          // Auto refresh
+          await handleRefreshWorkspace(true);
+        } else {
+          alert('Dosya silinemedi: ' + result.error);
+        }
+      }
+    } catch (error) {
+      console.error('File delete error:', error);
+      alert('Dosya silinirken hata oluştu: ' + error.message);
+    }
+    
+    closeContextMenu();
+  };
+
+  const handleFileRenameStart = (file) => {
+    if (!file) return;
+    
+    closeContextMenu();
+    
+    openInputDialog(
+      'Dosyayı Yeniden Adlandır',
+      `"${file.name}" dosyasının yeni adını girin:`,
+      'Dosya adı...',
+      file.name,
+      (newName) => {
+        if (newName && newName !== file.name) {
+          handleFileRenameComplete(file, newName);
+        }
+      }
+    );
+  };
+
+  const handleFileRenameComplete = async (file, newName) => {
+    if (!file || !newName || !window.electronAPI) return;
+
+    try {
+      if (file.path) {
+        const oldPath = file.path;
+        const directory = oldPath.substring(0, oldPath.lastIndexOf('/') + 1);
+        const newPath = directory + newName;
+        
+        const result = await window.electronAPI.renameFile(oldPath, newPath);
+        if (result.success) {
+          // Update state
+          setUploadedFiles(prev => prev.map(f => 
+            f.id === file.id 
+              ? { ...f, name: newName, path: result.newPath }
+              : f
+          ));
+          
+          // Update related tabs
+          setOpenTabs(prev => prev.map(tab => {
+            if (tab.data?.file?.id === file.id || tab.data?.fileId === file.id) {
+              return { ...tab, title: newName };
+            }
+            return tab;
+          }));
+          
+          console.log('File renamed successfully:', file.name, '->', newName);
+          
+          // Auto refresh
+          await handleRefreshWorkspace(true);
+        } else {
+          alert('Dosya yeniden adlandırılamadı: ' + result.error);
+        }
+      } else {
+        // Non-workspace file - just update name in state
+        setUploadedFiles(prev => prev.map(f => 
+          f.id === file.id ? { ...f, name: newName } : f
+        ));
+        
+        // Update related tabs
+        setOpenTabs(prev => prev.map(tab => {
+          if (tab.data?.file?.id === file.id || tab.data?.fileId === file.id) {
+            return { ...tab, title: newName };
+          }
+          return tab;
+        }));
+      }
+    } catch (error) {
+      console.error('File rename error:', error);
+      alert('Dosya yeniden adlandırılırken hata oluştu: ' + error.message);
+    }
+    
+    closeContextMenu();
+  };
+
+  const handleFileCopy = (file) => {
+    if (!file) return;
+    
+    setClipboard({
+      file: { ...file },
+      operation: 'copy'
+    });
+    
+    console.log('File copied to clipboard:', file.name);
+    closeContextMenu();
+  };
+
+  const handleFileCut = (file) => {
+    if (!file) return;
+    
+    setClipboard({
+      file: { ...file },
+      operation: 'cut'
+    });
+    
+    // Kes işlemi için dosyayı görsel olarak işaretle (opacity azalt)
+    setUploadedFiles(prev => prev.map(f => 
+      f.id === file.id 
+        ? { ...f, isCut: true }
+        : { ...f, isCut: false }
+    ));
+    
+    console.log('File cut to clipboard:', file.name);
+    closeContextMenu();
+  };
+
+  const handleFilePaste = async (targetFolder = null) => {
+    if (!clipboard.file || !currentWorkspace || !window.electronAPI) {
+      closeContextMenu();
+      return;
+    }
+
+    try {
+      const sourceFile = clipboard.file;
+      let newFileName = sourceFile.name;
+      
+      // Hedef klasörü belirle
+      let targetDirectory;
+      if (targetFolder && targetFolder.type === 'folder') {
+        // Klasöre yapıştır
+        targetDirectory = targetFolder.path || (currentWorkspace.path + '/' + targetFolder.name);
+      } else {
+        // Ana dizine yapıştır
+        targetDirectory = currentWorkspace.path;
+      }
+      
+      // If it's a copy operation, add (copy) suffix if file exists
+      if (clipboard.operation === 'copy') {
+        const existingFile = uploadedFiles.find(f => f.name === newFileName && f.path?.includes(targetDirectory));
+        if (existingFile) {
+          const ext = newFileName.split('.').pop();
+          const baseName = newFileName.replace(`.${ext}`, '');
+          newFileName = `${baseName} (kopya).${ext}`;
+        }
+      }
+      
+      const targetPath = targetDirectory + (targetDirectory.endsWith('/') ? '' : '/') + newFileName;
+      
+      if (clipboard.operation === 'copy') {
+        // Copy file to target directory
+        const result = await window.electronAPI.copyToWorkspace(
+          sourceFile.path,
+          targetDirectory,
+          newFileName
+        );
+        
+        if (result.success) {
+          console.log('File copied successfully:', newFileName);
+          
+          // Auto refresh
+          await handleRefreshWorkspace(true);
+        } else {
+          alert('Dosya kopyalanamadı: ' + result.error);
+        }
+      } else if (clipboard.operation === 'cut') {
+        // Move file (rename to new location)
+        const result = await window.electronAPI.renameFile(sourceFile.path, targetPath);
+        
+        if (result.success) {
+          // Update the original file's path in state and clear cut status
+          setUploadedFiles(prev => prev.map(f => 
+            f.id === sourceFile.id 
+              ? { ...f, name: newFileName, path: result.newPath, isCut: false }
+              : f
+          ));
+          
+          console.log('File moved successfully:', newFileName);
+          
+          // Auto refresh
+          await handleRefreshWorkspace(true);
+        } else {
+          alert('Dosya taşınamadı: ' + result.error);
+          // Hata durumunda cut işaretini kaldır
+          setUploadedFiles(prev => prev.map(f => 
+            f.id === sourceFile.id 
+              ? { ...f, isCut: false }
+              : f
+          ));
+        }
+        
+        // Clear clipboard after cut operation
+        setClipboard({ file: null, operation: null });
+      }
+    } catch (error) {
+      console.error('File paste error:', error);
+      alert('İşlem sırasında hata oluştu: ' + error.message);
+    }
+    
+    closeContextMenu();
+  };
+
+  const handleFileShare = (file) => {
+    if (!file) return;
+    
+    // Simple sharing - copy file path to clipboard
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(file.path || file.name);
+      alert('Dosya yolu panoya kopyalandı!');
+    } else {
+      alert('Paylaşım özelliği bu tarayıcıda desteklenmiyor.');
+    }
+    
+    closeContextMenu();
+  };
+
+  // Sidebar operations
+  const handleRefreshWorkspace = async (silent = false) => {
+    if (currentWorkspace) {
+      await loadWorkspaceFiles();
+      console.log('Workspace refreshed');
+    }
+    if (!silent) {
+      closeContextMenu();
+    }
+  };
+
+  const handleCreateNewFolder = async () => {
+    if (!currentWorkspace || !window.electronAPI) {
+      closeContextMenu();
+      return;
+    }
+    
+    closeContextMenu();
+    
+    openInputDialog(
+      'Yeni Klasör Oluştur',
+      'Oluşturulacak klasörün adını girin:',
+      'Klasör adı...',
+      '',
+      async (folderName) => {
+        if (!folderName) return;
+        
+        try {
+          const folderPath = currentWorkspace.path + (currentWorkspace.path.endsWith('/') ? '' : '/') + folderName;
+          const result = await window.electronAPI.createFolder(folderPath);
+          
+          if (result.success) {
+            console.log('Folder created successfully:', folderName);
+            // File watcher will automatically detect the new folder
+            
+            // Auto refresh
+            await handleRefreshWorkspace();
+          } else {
+            alert('Klasör oluşturulamadı: ' + result.error);
+          }
+        } catch (error) {
+          console.error('Folder create error:', error);
+          alert('Klasör oluşturulurken hata oluştu: ' + error.message);
+        }
+      }
+    );
+  };
+
+  const handleCreateNewFile = async () => {
+    if (!currentWorkspace || !window.electronAPI) {
+      closeContextMenu();
+      return;
+    }
+    
+    closeContextMenu();
+    
+    openInputDialog(
+      'Yeni Dosya Oluştur',
+      'Oluşturulacak dosyanın adını uzantısı ile birlikte girin:',
+      'Dosya adı (örn: belge.txt)...',
+      '',
+      async (fileName) => {
+        if (!fileName) return;
+        
+        try {
+          const filePath = currentWorkspace.path + (currentWorkspace.path.endsWith('/') ? '' : '/') + fileName;
+          const result = await window.electronAPI.createFile(filePath, '');
+          
+          if (result.success) {
+            console.log('File created successfully:', fileName);
+            // File watcher will automatically detect the new file
+            
+            // Auto refresh
+            await handleRefreshWorkspace();
+            
+            // If it's a text file, open it in editor
+            const fileExtension = fileName.split('.').pop()?.toLowerCase();
+            const textTypes = ['txt', 'md', 'json', 'js', 'html', 'css'];
+            
+            if (textTypes.includes(fileExtension)) {
+              // Create a document tab for text files
+              setTimeout(() => {
+                const newFile = uploadedFiles.find(f => f.name === fileName);
+                if (newFile) {
+                  handleViewFile(newFile);
+                }
+              }, 500); // Wait for file watcher to detect the file
+            }
+          } else {
+            alert('Dosya oluşturulamadı: ' + result.error);
+          }
+        } catch (error) {
+          console.error('File create error:', error);
+          alert('Dosya oluşturulurken hata oluştu: ' + error.message);
+        }
+      }
+    );
+  };
+
+  // Drag & Drop handler
+  const handleFileDrop = async (draggedFile, targetFolder) => {
+    if (!draggedFile || !window.electronAPI) return;
+    
+    try {
+      let targetDirectory;
+      if (targetFolder && targetFolder.type === 'folder') {
+        // Klasöre drop edildi
+        targetDirectory = targetFolder.path || (currentWorkspace.path + '/' + targetFolder.name);
+      } else {
+        // Ana dizine drop edildi
+        targetDirectory = currentWorkspace.path;
+      }
+      
+      const oldPath = draggedFile.path;
+      const newPath = targetDirectory + (targetDirectory.endsWith('/') ? '' : '/') + draggedFile.name;
+      
+      // Aynı yere drop etmeyi engelle
+      if (oldPath === newPath) {
+        console.log('File dropped to same location, ignoring');
+        return;
+      }
+      
+      const result = await window.electronAPI.renameFile(oldPath, newPath);
+      
+      if (result.success) {
+        // Update state
+        setUploadedFiles(prev => prev.map(f => 
+          f.id === draggedFile.id 
+            ? { ...f, path: result.newPath }
+            : f
+        ));
+        
+        // Update related tabs
+        setOpenTabs(prev => prev.map(tab => {
+          if (tab.data?.file?.id === draggedFile.id || tab.data?.fileId === draggedFile.id) {
+            return { ...tab, data: { ...tab.data, file: { ...tab.data.file, path: result.newPath } } };
+          }
+          return tab;
+        }));
+        
+        console.log('File moved successfully via drag & drop:', draggedFile.name);
+        
+        // Auto refresh
+        await handleRefreshWorkspace();
+      } else {
+        alert('Dosya taşınamadı: ' + result.error);
+      }
+    } catch (error) {
+      console.error('Drag & drop error:', error);
+      alert('Dosya taşınırken hata oluştu: ' + error.message);
+    }
   };
 
   const handleViewFile = async (file) => {
@@ -777,10 +1332,22 @@ function App() {
     const updatedMessages = [...chatMessages, userMessage];
     setChatMessages(updatedMessages);
     
-    // Generate chat title on first message
+    // Generate chat title and session ID on first message
     if (chatMessages.length === 0) {
-      const newTitle = generateChatTitle(message);
-      setChatTitle(newTitle);
+      // Yeni session ID oluştur
+      const newSessionId = `sess_${Date.now()}`;
+      setCurrentSessionId(newSessionId);
+
+      // Async olarak başlık oluştur
+      generateChatTitle(message).then(newTitle => {
+        setChatTitle(newTitle);
+      }).catch(error => {
+        console.error('Chat title generation error:', error);
+        // Fallback olarak eski mantığı kullan
+        const words = message.split(' ').slice(0, 4);
+        const fallbackTitle = words.join(' ') + (message.split(' ').length > 4 ? '...' : '');
+        setChatTitle(fallbackTitle);
+      });
     }
     
     // Create checkpoint for user message
@@ -980,33 +1547,36 @@ function App() {
         
         const finalMessages = [...updatedMessages, aiMessage];
         setChatMessages(finalMessages);
-        // History kaydı
+        // History kaydı - mevcut session'ı güncelle
         try {
-          const existingId = window.electronAPI?.store ? await window.electronAPI.store.get('currentSessionId') : null;
+          const titleToUse = chatTitle || await generateChatTitle(message);
           const session = {
-            id: existingId || `sess_${Date.now()}`,
-            title: chatTitle || generateChatTitle(message),
+            id: currentSessionId || `sess_${Date.now()}`,
+            title: titleToUse,
             messages: finalMessages,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
           };
-          if (window.electronAPI?.store) await window.electronAPI.store.set('currentSessionId', session.id);
-          await window.electronAPI?.history?.save(session);
-        } catch (e) {
-          console.warn('history save error', e);
-        }
-        // History kaydı
-        try {
-          const session = {
-            id: (await window.electronAPI?.store?.get('currentSessionId')) || `sess_${Date.now()}`,
-            title: chatTitle || generateChatTitle(message),
-            messages: finalMessages,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          };
-          await window.electronAPI?.store?.set('currentSessionId', session.id);
+          
+          // Session ID'yi güncelle (eğer yoksa)
+          if (!currentSessionId) {
+            setCurrentSessionId(session.id);
+          }
+          
           await window.electronAPI?.history?.save(session);
           dispatch(setSession(session));
+          
+          // History listesini güncelle
+          const updatedHistoryList = await window.electronAPI?.history?.list({ limit: 10, offset: 0 });
+          if (Array.isArray(updatedHistoryList)) {
+            const formattedHistory = updatedHistoryList.map(item => ({
+              id: item.id,
+              title: item.title,
+              timestamp: item.updatedAt || item.createdAt,
+              messages: []
+            }));
+            setChatHistory(formattedHistory);
+          }
         } catch (e) {
           console.warn('history save error', e);
         }
@@ -1097,62 +1667,148 @@ function App() {
     }
   };
 
-  // Generate chat title based on first user message
-  const generateChatTitle = (message) => {
-    const words = message.split(' ').slice(0, 4);
-    return words.join(' ') + (message.split(' ').length > 4 ? '...' : '');
+  // Generate chat title using AI - Yapay zeka ile mantıklı başlık oluşturma
+  const generateChatTitle = async (message) => {
+    try {
+      // Yapay zeka ile mantıklı başlık oluştur
+      const aiTitle = await geminiService.generateChatTitle(message);
+      return aiTitle;
+    } catch (error) {
+      console.error('AI title generation failed, using fallback:', error);
+      // Hata durumunda eski mantığı kullan
+      const words = message.split(' ').slice(0, 4);
+      return words.join(' ') + (message.split(' ').length > 4 ? '...' : '');
+    }
   };
 
-  // Handle clear chat messages
-  const handleClearChat = () => {
-    // Save current chat to history if it has messages
-    if (chatMessages.length > 0) {
-      const chatToSave = {
-        id: Date.now(),
-        title: chatTitle || 'Yeni Sohbet',
-        messages: [...chatMessages],
-        timestamp: new Date().toISOString()
-      };
-      setChatHistory(prev => [chatToSave, ...prev.slice(0, 9)]); // Keep last 10 chats
-      // persist via history API
-      (async () => {
-        try {
-          const session = {
-            id: `sess_${chatToSave.id}`,
-            title: chatToSave.title,
-            messages: chatToSave.messages,
-            createdAt: chatToSave.timestamp,
-            updatedAt: chatToSave.timestamp,
-          };
-          await window.electronAPI?.history?.save(session);
-          dispatch(setSession(session));
-        } catch (e) {
-          console.warn('history save on clear error', e);
-        }
-      })();
+  // Yeni sohbet başlatma
+  const handleNewChat = async () => {
+    try {
+      // Mevcut sohbeti kaydet (eğer mesaj varsa)
+      if (chatMessages.length > 0) {
+        await saveCurrentSession();
+      }
+
+      // Yeni sohbet için state'leri temizle
+      setChatMessages([]);
+      setChatTitle('');
+      setCurrentSessionId(null);
+      setCheckpoints([]);
+      setEditMode(null);
+      setIsStreaming(false);
+      setStreamingContent('');
+      setPendingContent('');
+      setStreamingToEditor(false);
+      setApprovedChanges(new Set());
+      setRejectedChanges(new Set());
+      
+      // Clear new AI text state
+      setAiTextState(null);
+      setOriginalText('');
+      setPendingChanges([]);
+      
+      // Clear textFormattingService state
+      textFormattingService.clearAllPendingChanges();
+      
+      // Clear Gemini chat history
+      geminiService.clearChat();
+
+      // Redux state'i de temizle
+      dispatch(setSession({
+        id: null,
+        title: 'Yeni Sohbet',
+        messages: [],
+        mode: 'sor'
+      }));
+
+    } catch (error) {
+      console.error('Yeni sohbet başlatma hatası:', error);
     }
-    
-    setChatMessages([]);
-    setChatTitle('');
-    setCheckpoints([]);
-    setEditMode(null);
-    setIsStreaming(false);
-    setStreamingContent('');
-    setPendingContent('');
-    setStreamingToEditor(false);
-    setApprovedChanges(new Set());
-    setRejectedChanges(new Set());
-    
-    // Clear new AI text state
-    setAiTextState(null);
-    setOriginalText('');
-    setPendingChanges([]);
-    
-    // Clear textFormattingService state
-    textFormattingService.clearAllPendingChanges();
-    
-    // Clear Gemini chat history
-    geminiService.clearChat();
+  };
+
+  // Mevcut sohbeti tamamen silme
+  const handleDeleteCurrentChat = async () => {
+    try {
+      // Eğer kaydedilmiş bir session varsa, onu sil
+      if (currentSessionId) {
+        await window.electronAPI?.history?.delete(currentSessionId);
+        
+        // History listesini güncelle
+        const updatedHistoryList = await window.electronAPI?.history?.list({ limit: 10, offset: 0 });
+        if (Array.isArray(updatedHistoryList)) {
+          const formattedHistory = updatedHistoryList.map(item => ({
+            id: item.id,
+            title: item.title,
+            timestamp: item.updatedAt || item.createdAt,
+            messages: []
+          }));
+          setChatHistory(formattedHistory);
+        }
+      }
+
+      // State'leri temizle (yeni sohbet başlatma ile aynı)
+      setChatMessages([]);
+      setChatTitle('');
+      setCurrentSessionId(null);
+      setCheckpoints([]);
+      setEditMode(null);
+      setIsStreaming(false);
+      setStreamingContent('');
+      setPendingContent('');
+      setStreamingToEditor(false);
+      setApprovedChanges(new Set());
+      setRejectedChanges(new Set());
+      
+      // Clear new AI text state
+      setAiTextState(null);
+      setOriginalText('');
+      setPendingChanges([]);
+      
+      // Clear textFormattingService state
+      textFormattingService.clearAllPendingChanges();
+      
+      // Clear Gemini chat history
+      geminiService.clearChat();
+
+      // Redux state'i de temizle
+      dispatch(setSession({
+        id: null,
+        title: 'Yeni Sohbet',
+        messages: [],
+        mode: 'sor'
+      }));
+
+    } catch (error) {
+      console.error('Sohbet silme hatası:', error);
+    }
+  };
+
+  // Sohbet geçmişinden silme fonksiyonu
+  const handleDeleteChatFromHistory = async (chatId) => {
+    try {
+      // Backend'den sil
+      await window.electronAPI?.history?.delete(chatId);
+      
+      // Local state'den de kaldır
+      setChatHistory(prev => prev.filter(chat => chat.id !== chatId));
+      
+      // Eğer silinen sohbet şu anki sohbet ise, yeni sohbet başlat
+      if (currentSessionId === chatId) {
+        setChatMessages([]);
+        setChatTitle('');
+        setCurrentSessionId(null);
+        
+        // Redux state'i de temizle
+        dispatch(setSession({
+          id: null,
+          title: 'Yeni Sohbet',
+          messages: [],
+          mode: 'sor'
+        }));
+      }
+    } catch (error) {
+      console.error('Sohbet geçmişinden silme hatası:', error);
+    }
   };
 
   // Workspace handlers
@@ -1340,8 +1996,22 @@ function App() {
   };
 
   // Handle sending edited message
-  const handleSendEditedMessage = async (editedMessage, attachments = []) => {
+  const handleSendEditedMessage = async (messageId, editedMessage, checkpointIndex, attachments = []) => {
     if (!editMode) return;
+    
+    // Checkpoint'e kadar olan mesajları kes
+    if (checkpointIndex !== null && checkpointIndex >= 0) {
+      const restoredMessages = chatMessages.slice(0, checkpointIndex + 1);
+      // Son mesajı (kullanıcı mesajını) düzenlenmiş haliyle değiştir
+      if (restoredMessages.length > 0) {
+        restoredMessages[restoredMessages.length - 1] = {
+          ...restoredMessages[restoredMessages.length - 1],
+          content: editedMessage,
+          attachments: attachments
+        };
+      }
+      setChatMessages(restoredMessages);
+    }
     
     // Exit edit mode
     setEditMode(null);
@@ -1971,6 +2641,21 @@ function App() {
             onViewFile={handleViewFile}
             currentWorkspace={currentWorkspace}
             selectedFile={selectedFile}
+            onFileContextMenu={handleFileContextMenu}
+            onSidebarContextMenu={handleSidebarContextMenu}
+            contextMenu={contextMenu}
+            onCloseContextMenu={closeContextMenu}
+            onFileDelete={handleFileDelete}
+            onFileRename={handleFileRenameStart}
+            onFileCopy={handleFileCopy}
+            onFileCut={handleFileCut}
+            onFilePaste={handleFilePaste}
+            onFileShare={handleFileShare}
+            onRefreshWorkspace={handleRefreshWorkspace}
+            onCreateNewFolder={handleCreateNewFolder}
+            onCreateNewFile={handleCreateNewFile}
+            clipboard={clipboard}
+            onFileDrop={handleFileDrop}
           />
         </ResizablePanel>
 
@@ -2011,7 +2696,8 @@ function App() {
           <AIChatPanel 
             messages={chatMessages}
             onSendMessage={editMode ? handleSendEditedMessage : handleAISendMessage}
-            onClearChat={handleClearChat}
+            onNewChat={handleNewChat}
+            onDeleteChat={handleDeleteCurrentChat}
             isAITyping={isAITyping}
             isStreaming={isStreaming}
             streamingContent={streamingContent}
@@ -2025,11 +2711,23 @@ function App() {
             chatTitle={chatTitle}
             chatHistory={chatHistory}
             onLoadChatFromHistory={handleLoadChatFromHistory}
+            onDeleteChatFromHistory={handleDeleteChatFromHistory}
             progressStatus={chatProgress}
             thoughtSummary={chatThoughts}
           />
         </ResizablePanel>
       </ResizablePanelGroup>
+
+      {/* Input Dialog */}
+      <InputDialog
+        isOpen={inputDialog.isOpen}
+        onClose={closeInputDialog}
+        onConfirm={handleDialogConfirm}
+        title={inputDialog.title}
+        message={inputDialog.message}
+        placeholder={inputDialog.placeholder}
+        defaultValue={inputDialog.defaultValue}
+      />
     </div>
   );
 }

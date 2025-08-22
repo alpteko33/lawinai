@@ -184,10 +184,6 @@ function DocumentEditor({
   const getAIStatusText = () => {
     if (aiTextState === 'pending') {
       return 'AI metni onay bekliyor';
-    } else if (aiTextState === 'changes') {
-      return 'AI değişiklikleri mevcut';
-    } else if (isAIProcessing) {
-      return 'AI metin üretiyor';
     }
     return null;
   };
@@ -338,26 +334,12 @@ function DocumentEditor({
         </div>
         
         {/* AI Status Indicator */}
-        {(aiTextState || isAIProcessing) && (
+        {aiTextState === 'pending' && (
           <div className="flex items-center space-x-2">
-            {isAIProcessing && (
-              <div className="flex items-center text-blue-600 dark:text-blue-400">
-                <div className="animate-spin rounded-full h-3 w-3 border border-current border-t-transparent mr-1"></div>
-                <span className="text-xs">AI çalışıyor</span>
-              </div>
-            )}
-            {aiTextState === 'pending' && (
-              <div className="flex items-center text-green-600 dark:text-green-400">
-                <div className="w-2 h-2 bg-current rounded-full mr-1"></div>
-                <span className="text-xs">Onay bekliyor</span>
-              </div>
-            )}
-            {aiTextState === 'changes' && (
-              <div className="flex items-center text-orange-600 dark:text-orange-400">
-                <div className="w-2 h-2 bg-current rounded-full mr-1"></div>
-                <span className="text-xs">Değişiklikler mevcut</span>
-              </div>
-            )}
+            <div className="flex items-center text-green-600 dark:text-green-400">
+              <div className="w-2 h-2 bg-current rounded-full mr-1"></div>
+              <span className="text-xs">Onay bekliyor</span>
+            </div>
           </div>
         )}
       </div>

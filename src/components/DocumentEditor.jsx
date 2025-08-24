@@ -242,35 +242,43 @@ function DocumentEditor({
                       autoFocus
                     />
                   ) : (
-                    truncateTitle(tab.title)
+                    <span className="flex items-center">
+                      {truncateTitle(tab.title)}
+                      {tab.data?.hasChanges && (
+                        <span className="ml-1 text-orange-500">•</span>
+                      )}
+                    </span>
                   )}
                 </span>
-                {openTabs.length > 1 && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onTabClose(tab.id);
-                    }}
-                    className="ml-1 p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                )}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onTabClose(tab.id);
+                  }}
+                  className="ml-1 p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                >
+                  <X className="w-3 h-3" />
+                </button>
               </div>
             ))}
           </div>
 
           {/* New Tab Button */}
           <button
-            onClick={() => {
+            onClick={async () => {
+              const timestamp = Date.now();
+              const tabTitle = 'Yeni Belge';
+              const fileName = `${tabTitle}.udf`;
               const newTab = {
-                id: `doc-${Date.now()}`,
+                id: `doc-${timestamp}`,
                 type: 'document',
-                title: 'Yeni Belge',
+                title: tabTitle,
                 data: {
                   content: '',
                   hasChanges: false,
-                  aiChanges: []
+                  aiChanges: [],
+                  isNewUDF: true,
+                  fileName: fileName
                 }
               };
               onTabChange(newTab.id, newTab);
@@ -316,7 +324,16 @@ function DocumentEditor({
               originalText={originalText}
             />
           </div>
-        ) : null}
+        ) : (
+          // No tabs open - show welcome message
+          <div className="h-full flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+            <div className="text-center text-gray-500 dark:text-gray-400">
+              <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
+              <p className="text-lg font-medium mb-2">Henüz hiçbir sekme açık değil</p>
+              <p className="text-sm">Yeni bir sekme açmak için + butonuna tıklayın</p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Footer - Document Stats */}

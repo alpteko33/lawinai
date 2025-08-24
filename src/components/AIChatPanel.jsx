@@ -432,10 +432,22 @@ function AIChatPanel({
     setTabSearchQuery('');
     setFileSearchQuery('');
     
+    // Input'tan / işaretini kaldır ve sekme referansını ekle
+    const beforeCursor = inputValue.substring(0, cursorPosition);
+    const afterCursor = inputValue.substring(cursorPosition);
+    const beforeSlash = beforeCursor.replace(/\/[^\/\s]*$/, '');
+    const newValue = `${beforeSlash}[Sekme: ${tab.title}] ${afterCursor}`;
+    setInputValue(newValue);
+    
+    // Cursor pozisyonunu güncelle
+    const newCursorPos = beforeSlash.length + tab.title.length + 10; // +10 for "[Sekme: ] "
+    setCursorPosition(newCursorPos);
+    
     // Input'a focus ol
     setTimeout(() => {
       if (inputRef.current) {
         inputRef.current.focus();
+        inputRef.current.setSelectionRange(newCursorPos, newCursorPos);
       }
     }, 0);
   };

@@ -329,6 +329,26 @@ ipcMain.handle('fs:writeFile', async (event, filePath, content) => {
   }
 });
 
+// Binary dosya yazma - UDF gibi binary dosyalar için
+ipcMain.handle('fs:writeFileBuffer', async (event, filePath, buffer) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    
+    // Klasör yoksa oluştur
+    const dir = path.dirname(filePath);
+    await fs.promises.mkdir(dir, { recursive: true });
+    
+    // Buffer'ı dosyaya yaz
+    await fs.promises.writeFile(filePath, buffer);
+    console.log('Binary file saved:', filePath);
+    return { success: true, path: filePath };
+  } catch (error) {
+    console.error('Binary file write error:', error);
+    throw error;
+  }
+});
+
 // Workspace dosya listesi - Klasördeki dosyaları listele
 ipcMain.handle('fs:listWorkspaceFiles', async (event, workspacePath) => {
   try {

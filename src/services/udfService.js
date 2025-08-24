@@ -183,14 +183,35 @@ ${stylesXML}
     return `UDF Digital Signature - Generated: ${timestamp}`;
   }
 
-  // XML içeriği kaçış karakterleri
+  // HTML'i temiz metne çevir ve XML için escape et
   escapeXMLContent(content) {
-    return content
+    // Önce HTML tag'lerini temizle
+    let cleanContent = content;
+    
+    // HTML tag'lerini kaldır
+    cleanContent = cleanContent.replace(/<[^>]*>/g, '');
+    
+    // HTML entity'lerini decode et
+    cleanContent = cleanContent
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&'); // Bu en son olmalı
+    
+    // Satır sonlarını koru, sadece gereksiz boşlukları temizle
+    cleanContent = cleanContent
+      .replace(/[ \t]+/g, ' ') // Sadece boşluk ve tab'ları tek boşluğa çevir
+      .replace(/\n\s*\n\s*\n/g, '\n\n') // 3+ satır sonunu 2 satır sonuna çevir
+      .replace(/^\s+|\s+$/gm, '') // Her satırın başındaki ve sonundaki boşlukları kaldır
+      .trim();
+    
+    // XML için escape et (sadece gerekli olanları)
+    return cleanContent
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
+      .replace(/>/g, '&gt;');
   }
 
   // Properties parse et

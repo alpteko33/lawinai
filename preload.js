@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   readFile: (filePath) => ipcRenderer.invoke('fs:readFile', filePath),
   readFileAsBase64: (filePath) => ipcRenderer.invoke('fs:readFileAsBase64', filePath),
   writeFile: (filePath, content) => ipcRenderer.invoke('fs:writeFile', filePath, content),
+  writeFileBuffer: (filePath, buffer) => ipcRenderer.invoke('fs:writeFileBuffer', filePath, buffer),
   listWorkspaceFiles: (workspacePath) => ipcRenderer.invoke('fs:listWorkspaceFiles', workspacePath),
   watchWorkspace: (workspacePath) => ipcRenderer.invoke('fs:watchWorkspace', workspacePath),
   copyToWorkspace: (sourcePath, workspacePath, fileName) => ipcRenderer.invoke('fs:copyToWorkspace', sourcePath, workspacePath, fileName),

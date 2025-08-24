@@ -99,19 +99,8 @@ function App() {
   const [pendingChanges, setPendingChanges] = useState([]); // AI'ın önerdiği değişiklikler
 
   // Tab Management State
-  const [openTabs, setOpenTabs] = useState([
-    {
-      id: 'doc-main',
-      type: 'document',
-      title: 'Hukuki Metin',
-      data: {
-        content: '',
-        hasChanges: false,
-        aiChanges: []
-      }
-    }
-  ]);
-  const [activeTabId, setActiveTabId] = useState('doc-main');
+  const [openTabs, setOpenTabs] = useState([]);
+  const [activeTabId, setActiveTabId] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
 
   // Optimized highlight refresh - only when needed
@@ -148,6 +137,23 @@ function App() {
 
     loadWorkspace();
   }, []);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Ctrl+S (Cmd+S on Mac) for save
+      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+      if ((isMac ? e.metaKey : e.ctrlKey) && e.key === 's') {
+        e.preventDefault();
+        if (activeTabId && currentDocument.content) {
+          handleDocumentSave();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeTabId, currentDocument, currentWorkspace]);
 
   // App initialization
   useEffect(() => {
@@ -210,6 +216,179 @@ function App() {
     })();
   }, []);
 
+  // Path utility for browser compatibility
+  const joinPath = (basePath, fileName) => {
+    if (!basePath) return fileName;
+    // Normalize path separators
+    const normalizedBase = basePath.replace(/\\/g, '/');
+    const normalizedFile = fileName.replace(/\\/g, '/');
+    // Remove trailing slash from base and leading slash from file
+    const cleanBase = normalizedBase.replace(/\/$/, '');
+    const cleanFile = normalizedFile.replace(/^\//, '');
+    return `${cleanBase}/${cleanFile}`;
+  };
+
+  // AI'dan akıllı başlık oluşturma fonksiyonu
+  const generateSmartTitle = async (documentContent, aiResponse, userMessage = '') => {
+    try {
+      // Önce kullanıcının orijinal komutundan başlık çıkaralım
+      if (userMessage) {
+        const smartTitle = extractTitleFromUserCommand(userMessage);
+        if (smartTitle) {
+          return smartTitle;
+        }
+      }
+      
+      // AI response'da açık başlık arayalım
+      const titlePatterns = [
+        /(?:başlık|title|belge adı|document title):\s*(.+)/i,
+        /(?:konu|subject|re):\s*(.+)/i,
+        /(?:dilekçe konusu|petition subject):\s*(.+)/i
+      ];
+      
+      for (const pattern of titlePatterns) {
+        const match = aiResponse.match(pattern);
+        if (match && match[1]) {
+          return match[1].trim().substring(0, 50); // Max 50 karakter
+        }
+      }
+      
+      // Doküman içeriğinden çıkarım yapalım
+      const lines = documentContent.split('\n').filter(line => line.trim());
+      
+      if (lines.length > 0) {
+        // İlk satır genellikle başlık olur
+        let firstLine = lines[0].trim();
+        
+        // HTML tag'lerini temizle
+        firstLine = firstLine.replace(/<[^>]*>/g, '');
+        
+        // Çok uzunsa kısalt
+        if (firstLine.length > 50) {
+          firstLine = firstLine.substring(0, 47) + '...';
+        }
+        
+        if (firstLine.length > 3) {
+          return firstLine;
+        }
+      }
+      
+      // İçerikten anahtar kelimeler çıkaralım
+      const keywords = extractKeywords(documentContent);
+      if (keywords.length > 0) {
+        return keywords.slice(0, 3).join(' ').substring(0, 50);
+      }
+      
+      // Son çare: belge türü tespiti
+      const docType = detectDocumentType(documentContent);
+      return docType;
+      
+    } catch (error) {
+      console.error('Smart title generation error:', error);
+      return 'Yeni Belge';
+    }
+  };
+
+  // Kullanıcı komutundan başlık çıkarma fonksiyonu
+  const extractTitleFromUserCommand = (userMessage) => {
+    const message = userMessage.toLowerCase().trim();
+    
+    // Yaygın komut pattern'leri
+    const commandPatterns = [
+      // "X yaz" komutları
+      { pattern: /(.+?)\s+(?:yaz|oluştur|hazırla|düzenle)$/i, transform: (match) => match[1] },
+      // "X için dilekçe yaz"
+      { pattern: /(.+?)\s+için\s+(?:dilekçe|dava|başvuru)\s+(?:yaz|oluştur|hazırla)$/i, transform: (match) => `${match[1]} Dilekçesi` },
+      // "X dilekçesi yaz"
+      { pattern: /(.+?)\s+(?:dilekçesi|davası|başvurusu|sözleşmesi)\s+(?:yaz|oluştur|hazırla)$/i, transform: (match) => match[1] + ' Dilekçesi' },
+      // "X dava dilekçesi yaz"
+      { pattern: /(.+?)\s+dava\s+dilekçesi\s+(?:yaz|oluştur|hazırla)$/i, transform: (match) => `${match[1]} Dava Dilekçesi` },
+      // Basit pattern'ler
+      { pattern: /^(.+?)\s+(?:yaz|oluştur|hazırla|düzenle)$/i, transform: (match) => match[1] }
+    ];
+    
+    for (const { pattern, transform } of commandPatterns) {
+      const match = message.match(pattern);
+      if (match && match[1]) {
+        let title = transform(match).trim();
+        
+        // Başlık harflerini düzelt
+        title = title
+          .split(' ')
+          .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+          .join(' ');
+        
+        // Maksimum uzunluk kontrolü
+        if (title.length > 50) {
+          title = title.substring(0, 47) + '...';
+        }
+        
+        return title;
+      }
+    }
+    
+    return null;
+  };
+
+  // Anahtar kelime çıkarma fonksiyonu
+  const extractKeywords = (content) => {
+    const text = content.toLowerCase()
+      .replace(/<[^>]*>/g, '') // HTML tag'lerini kaldır
+      .replace(/[^\w\s]/g, ' ') // Noktalama işaretlerini kaldır
+      .replace(/\s+/g, ' ') // Çoklu boşlukları tek boşluğa çevir
+      .trim();
+    
+    // Yaygın kelimeler (stop words)
+    const stopWords = new Set([
+      'bir', 'bu', 'şu', 've', 'veya', 'ile', 'için', 'den', 'dan', 'de', 'da',
+      'ki', 'ise', 'olan', 'olarak', 'ama', 'fakat', 'ancak', 'lakin', 'ne',
+      'nasıl', 'neden', 'niçin', 'nerede', 'ne', 'zaman', 'kim', 'kime', 'kimin',
+      'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with'
+    ]);
+    
+    const words = text.split(' ')
+      .filter(word => word.length > 2 && !stopWords.has(word))
+      .filter(word => !/^\d+$/.test(word)); // Sadece rakam olan kelimeleri filtrele
+    
+    // Kelime sıklığını say
+    const frequency = {};
+    words.forEach(word => {
+      frequency[word] = (frequency[word] || 0) + 1;
+    });
+    
+    // En sık geçen kelimeleri döndür
+    return Object.entries(frequency)
+      .sort(([,a], [,b]) => b - a)
+      .slice(0, 5)
+      .map(([word]) => word);
+  };
+
+  // Belge türü tespit fonksiyonu
+  const detectDocumentType = (content) => {
+    const lowerContent = content.toLowerCase();
+    
+    const docTypes = [
+      { keywords: ['dilekçe', 'petition'], title: 'Dilekçe' },
+      { keywords: ['dava', 'lawsuit', 'mahkeme'], title: 'Dava Dilekçesi' },
+      { keywords: ['sözleşme', 'contract', 'anlaşma'], title: 'Sözleşme' },
+      { keywords: ['vekaletname', 'power of attorney'], title: 'Vekaletname' },
+      { keywords: ['tebligat', 'notification'], title: 'Tebligat' },
+      { keywords: ['cevap', 'response', 'yanıt'], title: 'Cevap Dilekçesi' },
+      { keywords: ['temyiz', 'appeal'], title: 'Temyiz Dilekçesi' },
+      { keywords: ['icra', 'enforcement'], title: 'İcra Takibi' },
+      { keywords: ['arabulucu', 'mediation'], title: 'Arabuluculuk' },
+      { keywords: ['şikayet', 'complaint'], title: 'Şikayet Dilekçesi' }
+    ];
+    
+    for (const docType of docTypes) {
+      if (docType.keywords.some(keyword => lowerContent.includes(keyword))) {
+        return docType.title;
+      }
+    }
+    
+    return 'Hukuki Belge';
+  };
+
   // Document handlers
   const handleDocumentChange = (content) => {
     console.log('Document change for tab:', activeTabId, 'Content length:', content.length);
@@ -222,11 +401,59 @@ function App() {
     ));
     
     // Also update currentDocument for backward compatibility
+    const activeTab = openTabs.find(tab => tab.id === activeTabId);
     setCurrentDocument(prev => ({
       ...prev,
       content,
-      hasChanges: true
+      hasChanges: true,
+      // UDF bilgilerini koru
+      isNewUDF: prev.isNewUDF || activeTab?.data?.isNewUDF,
+      fileName: prev.fileName || activeTab?.data?.fileName
     }));
+  };
+
+  const createNewUDFFile = async (fileName, title, content) => {
+    console.log('createNewUDFFile called:', { fileName, title, hasWorkspace: !!currentWorkspace, hasElectron: !!window.electronAPI });
+    
+    if (!currentWorkspace || !window.electronAPI) {
+      console.log('Cannot create UDF file - missing workspace or electron API');
+      return fileName;
+    }
+    
+    try {
+      // Aynı isimde dosya varsa benzersiz isim oluştur
+      let finalFileName = fileName;
+      let counter = 1;
+      
+      while (uploadedFiles.some(file => file.name === finalFileName)) {
+        const nameWithoutExt = fileName.replace('.udf', '');
+        finalFileName = `${nameWithoutExt} (${counter}).udf`;
+        counter++;
+      }
+      
+      // Boş içerik için varsayılan metin
+      const contentToUse = content || `${title}\n\n[Bu belgeye içerik eklemek için buraya yazın...]`;
+      
+      // UDF dosyası oluştur
+      const udfBlob = await udfService.createUDF(contentToUse, title);
+      const arrayBuffer = await udfBlob.arrayBuffer();
+      const uint8Array = new Uint8Array(arrayBuffer);
+      
+      const filePath = window.electronAPI ? 
+        joinPath(currentWorkspace.path, finalFileName) :
+        finalFileName;
+      await window.electronAPI.writeFileBuffer(filePath, uint8Array);
+      
+      console.log('Yeni UDF dosyası oluşturuldu:', filePath);
+      
+      // Workspace dosyalarını yenile
+      loadWorkspaceFiles();
+      
+      return finalFileName; // Gerçek dosya adını döndür
+    } catch (error) {
+      console.error('UDF dosya oluşturma hatası:', error);
+      return fileName; // Hata durumunda orijinal adı döndür
+    }
   };
 
   const handleDocumentSave = async () => {
@@ -236,26 +463,66 @@ function App() {
     }
 
     try {
-      // Dosya adı belirle
-      const fileName = `${currentDocument.title || 'dilekce'}.txt`;
-      const filePath = window.electronAPI ? 
-        require('path').join(currentWorkspace.path, fileName) : 
-        fileName;
+      const activeTab = openTabs.find(tab => tab.id === activeTabId);
+      
+      console.log('Save Debug - activeTab:', activeTab);
+      console.log('Save Debug - currentDocument:', currentDocument);
+      console.log('Save Debug - isNewUDF check:', activeTab?.data?.isNewUDF);
+      console.log('Save Debug - fileName check:', currentDocument.fileName);
+      
+      if (activeTab?.data?.isNewUDF || currentDocument.fileName?.endsWith('.udf') || currentDocument.isNewUDF) {
+        // UDF dosyası olarak kaydet ve export et
+        const fileName = currentDocument.fileName || `${currentDocument.title || 'dilekce'}.udf`;
+        const filePath = window.electronAPI ? 
+          joinPath(currentWorkspace.path, fileName) : 
+          fileName;
 
-      if (window.electronAPI) {
-        // Electron - workspace içine kaydet
-        await window.electronAPI.writeFile(filePath, currentDocument.content);
-        console.log('Document saved to workspace:', filePath);
+        if (window.electronAPI) {
+          // UDF dosyası oluştur
+          const udfBlob = await udfService.createUDF(
+            currentDocument.content,
+            currentDocument.title || 'Hukuki Metin'
+          );
+          const arrayBuffer = await udfBlob.arrayBuffer();
+          const uint8Array = new Uint8Array(arrayBuffer);
+          
+          await window.electronAPI.writeFileBuffer(filePath, uint8Array);
+          console.log('UDF dosyası kaydedildi:', filePath);
+        } else {
+          // Web fallback - UDF dosyası olarak indir
+          const udfBlob = await udfService.createUDF(
+            currentDocument.content,
+            currentDocument.title || 'Hukuki Metin'
+          );
+          udfService.downloadUDF(udfBlob, fileName);
+        }
       } else {
-        // Web fallback - download as file
-        const blob = new Blob([currentDocument.content], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = fileName;
-        a.click();
-        URL.revokeObjectURL(url);
+        // Normal metin dosyası olarak kaydet
+        const fileName = `${currentDocument.title || 'dilekce'}.txt`;
+        const filePath = window.electronAPI ? 
+          joinPath(currentWorkspace.path, fileName) : 
+          fileName;
+
+        if (window.electronAPI) {
+          await window.electronAPI.writeFile(filePath, currentDocument.content);
+          console.log('Document saved to workspace:', filePath);
+        } else {
+          const blob = new Blob([currentDocument.content], { type: 'text/plain' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = fileName;
+          a.click();
+          URL.revokeObjectURL(url);
+        }
       }
+
+      // Tab'ı güncelle
+      setOpenTabs(prev => prev.map(tab => 
+        tab.id === activeTabId 
+          ? { ...tab, data: { ...tab.data, hasChanges: false } }
+          : tab
+      ));
 
       setCurrentDocument(prev => ({
         ...prev,
@@ -479,7 +746,7 @@ function App() {
   };
 
   // Tab Management Functions
-  const handleTabChange = (tabId, newTab = null) => {
+  const handleTabChange = async (tabId, newTab = null) => {
     console.log('Tab change to:', tabId, 'New tab:', newTab);
     
     if (newTab) {
@@ -496,8 +763,32 @@ function App() {
           title: newTab.title,
           content: newTab.data?.content || '',
           hasChanges: newTab.data?.hasChanges || false,
-          aiChanges: newTab.data?.aiChanges || []
+          aiChanges: newTab.data?.aiChanges || [],
+          isNewUDF: newTab.data?.isNewUDF || false,
+          fileName: newTab.data?.fileName || null
         }));
+        
+        // Eğer yeni UDF dosyası ise, workspace'e UDF dosyası oluştur
+        if (newTab.data?.isNewUDF && currentWorkspace) {
+          console.log('Creating UDF file for new tab:', newTab.data.fileName);
+          const actualFileName = await createNewUDFFile(newTab.data.fileName, newTab.title, '');
+          
+          // Eğer dosya adı değiştiyse (duplicate durumu) tab'ı ve currentDocument'i güncelle
+          if (actualFileName !== newTab.data.fileName) {
+            setOpenTabs(prev => prev.map(tab => 
+              tab.id === tabId 
+                ? { ...tab, data: { ...tab.data, fileName: actualFileName } }
+                : tab
+            ));
+            
+            setCurrentDocument(prev => ({
+              ...prev,
+              fileName: actualFileName
+            }));
+          }
+        } else {
+          console.log('UDF file creation skipped - isNewUDF:', newTab.data?.isNewUDF, 'currentWorkspace:', !!currentWorkspace);
+        }
       }
       setActiveTabId(tabId);
       return;
@@ -514,7 +805,9 @@ function App() {
         title: targetTab.title,
         content: targetTab.data.content || '',
         hasChanges: targetTab.data.hasChanges || false,
-        aiChanges: targetTab.data.aiChanges || []
+        aiChanges: targetTab.data.aiChanges || [],
+        isNewUDF: targetTab.data.isNewUDF || false,
+        fileName: targetTab.data.fileName || null
       }));
     }
     
@@ -804,18 +1097,56 @@ function App() {
           // Remove from state
           setUploadedFiles(prev => prev.filter(f => f.id !== file.id));
           
-          // Close related tabs
+          // Close related tabs - check by file name and file ID
           setOpenTabs(prev => {
             const filteredTabs = prev.filter(tab => {
+              // PDF dosyaları için file ID kontrolü
               if (tab.data?.file?.id === file.id || tab.data?.fileId === file.id) {
                 return false;
               }
+              
+              // UDF dosyaları için dosya adı kontrolü
+              if (tab.data?.fileName === file.name || tab.title === file.name.replace(/\.[^/.]+$/, "")) {
+                return false;
+              }
+              
+              // UDF tab ID pattern kontrolü (udf-{file.id})
+              if (tab.id === `udf-${file.id}`) {
+                return false;
+              }
+              
               return true;
             });
             
             // If active tab was closed, switch to another
             if (activeTabId && !filteredTabs.find(tab => tab.id === activeTabId)) {
-              setActiveTabId(filteredTabs.length > 0 ? filteredTabs[0].id : 'doc-main');
+              setActiveTabId(filteredTabs.length > 0 ? filteredTabs[0].id : null);
+              
+              // Eğer yeni aktif tab varsa currentDocument'i güncelle
+              if (filteredTabs.length > 0) {
+                const newActiveTab = filteredTabs[0];
+                if (newActiveTab.type === 'document') {
+                  setCurrentDocument(prev => ({
+                    ...prev,
+                    title: newActiveTab.title,
+                    content: newActiveTab.data?.content || '',
+                    hasChanges: newActiveTab.data?.hasChanges || false,
+                    aiChanges: newActiveTab.data?.aiChanges || [],
+                    isNewUDF: newActiveTab.data?.isNewUDF || false,
+                    fileName: newActiveTab.data?.fileName || null
+                  }));
+                }
+              } else {
+                // Hiç sekme kalmadıysa currentDocument'i temizle
+                setCurrentDocument({
+                  id: null,
+                  name: '',
+                  title: '',
+                  content: '',
+                  hasChanges: false,
+                  aiChanges: []
+                });
+              }
             }
             
             return filteredTabs;
@@ -875,11 +1206,34 @@ function App() {
           
           // Update related tabs
           setOpenTabs(prev => prev.map(tab => {
+            // PDF dosyaları için file ID kontrolü
             if (tab.data?.file?.id === file.id || tab.data?.fileId === file.id) {
               return { ...tab, title: newName };
             }
+            
+            // UDF dosyaları için dosya adı ve ID kontrolü
+            if (tab.data?.fileName === file.name || tab.id === `udf-${file.id}`) {
+              const newTitle = newName.replace(/\.[^/.]+$/, ""); // Uzantıyı kaldır
+              return { 
+                ...tab, 
+                title: newTitle,
+                data: { ...tab.data, fileName: newName }
+              };
+            }
+            
             return tab;
           }));
+          
+          // Eğer aktif tab değiştirildiyse currentDocument'i de güncelle
+          const activeTab = openTabs.find(tab => tab.id === activeTabId);
+          if (activeTab && (activeTab.data?.fileName === file.name || activeTab.id === `udf-${file.id}`)) {
+            const newTitle = newName.replace(/\.[^/.]+$/, "");
+            setCurrentDocument(prev => ({
+              ...prev,
+              title: newTitle,
+              fileName: newName
+            }));
+          }
           
           console.log('File renamed successfully:', file.name, '->', newName);
           
@@ -896,11 +1250,34 @@ function App() {
         
         // Update related tabs
         setOpenTabs(prev => prev.map(tab => {
+          // PDF dosyaları için file ID kontrolü
           if (tab.data?.file?.id === file.id || tab.data?.fileId === file.id) {
             return { ...tab, title: newName };
           }
+          
+          // UDF dosyaları için dosya adı ve ID kontrolü
+          if (tab.data?.fileName === file.name || tab.id === `udf-${file.id}`) {
+            const newTitle = newName.replace(/\.[^/.]+$/, ""); // Uzantıyı kaldır
+            return { 
+              ...tab, 
+              title: newTitle,
+              data: { ...tab.data, fileName: newName }
+            };
+          }
+          
           return tab;
         }));
+        
+        // Eğer aktif tab değiştirildiyse currentDocument'i de güncelle
+        const activeTab = openTabs.find(tab => tab.id === activeTabId);
+        if (activeTab && (activeTab.data?.fileName === file.name || activeTab.id === `udf-${file.id}`)) {
+          const newTitle = newName.replace(/\.[^/.]+$/, "");
+          setCurrentDocument(prev => ({
+            ...prev,
+            title: newTitle,
+            fileName: newName
+          }));
+        }
       }
     } catch (error) {
       console.error('File rename error:', error);
@@ -1106,7 +1483,30 @@ function App() {
         
         try {
           const filePath = currentWorkspace.path + (currentWorkspace.path.endsWith('/') ? '' : '/') + fileName;
-          const result = await window.electronAPI.createFile(filePath, '');
+          const fileExtension = fileName.split('.').pop()?.toLowerCase();
+          
+          let result;
+          
+          if (fileExtension === 'udf') {
+            // UDF dosyası için özel işlem - geçerli UDF dosyası oluştur
+            const title = fileName.replace('.udf', '') || 'Yeni Belge';
+            const defaultContent = `${title}\n\n[Bu belgeye içerik eklemek için buraya yazın...]`;
+            
+            try {
+              const udfBlob = await udfService.createUDF(defaultContent, title);
+              const arrayBuffer = await udfBlob.arrayBuffer();
+              const uint8Array = new Uint8Array(arrayBuffer);
+              
+              await window.electronAPI.writeFileBuffer(filePath, uint8Array);
+              result = { success: true, path: filePath };
+            } catch (udfError) {
+              console.error('UDF creation error:', udfError);
+              result = { success: false, error: udfError.message };
+            }
+          } else {
+            // Normal dosya oluştur
+            result = await window.electronAPI.createFile(filePath, '');
+          }
           
           if (result.success) {
             console.log('File created successfully:', fileName);
@@ -1115,12 +1515,11 @@ function App() {
             // Auto refresh
             await handleRefreshWorkspace();
             
-            // If it's a text file, open it in editor
-            const fileExtension = fileName.split('.').pop()?.toLowerCase();
-            const textTypes = ['txt', 'md', 'json', 'js', 'html', 'css'];
+            // If it's a text file or UDF, open it in editor
+            const textTypes = ['txt', 'md', 'json', 'js', 'html', 'css', 'udf'];
             
             if (textTypes.includes(fileExtension)) {
-              // Create a document tab for text files
+              // Create a document tab for text files and UDF files
               setTimeout(() => {
                 const newFile = uploadedFiles.find(f => f.name === fileName);
                 if (newFile) {
@@ -1215,13 +1614,21 @@ function App() {
         
         // UDF dosyasını doğrula
         const validation = await udfService.validateUDF(fileToRead);
-        if (!validation.valid) {
-          alert(`UDF dosyası geçersiz: ${validation.error}`);
-          return;
-        }
+        let udfData;
         
-        // UDF dosyasını oku
-        const udfData = await udfService.readUDF(fileToRead);
+        if (!validation.valid) {
+          console.log('UDF dosyası geçersiz, boş sekme açılıyor:', validation.error);
+          // Geçersiz UDF dosyası için boş içerik oluştur
+          const title = file.name.replace('.udf', '') || 'Yeni Belge';
+          udfData = {
+            content: `${title}\n\n[Bu belgeye içerik eklemek için buraya yazın...]`,
+            properties: {},
+            title: title
+          };
+        } else {
+          // Geçerli UDF dosyasını oku
+          udfData = await udfService.readUDF(fileToRead);
+        }
         
         // Yeni doküman tab'ı oluştur
         const docTab = {
@@ -1231,6 +1638,8 @@ function App() {
           data: { 
             fileId: file.id,
             isUDF: true,
+            isNewUDF: true, // UDF dosyası olarak kaydetmek için
+            fileName: file.name,
             udfData: udfData,
             content: udfData.content,
             hasChanges: false,
@@ -1255,6 +1664,8 @@ function App() {
           hasChanges: false,
           aiChanges: [],
           isUDF: true,
+          isNewUDF: true, // UDF dosyası olarak kaydetmek için
+          fileName: file.name,
           udfData: udfData
         });
         
@@ -1419,13 +1830,71 @@ function App() {
           // Format the AI content for proper HTML structure
           const formattedContent = textFormattingService.formatForTipTap(documentContent);
           
-          // Determine AI text state based on content
-          const currentContent = currentDocument.content;
+          // AI'dan akıllı başlık çıkarımı (orijinal kullanıcı mesajını da geç)
+          let tabTitle = await generateSmartTitle(documentContent, response.content, message);
           
-          console.log('🔍 Current content:', currentContent ? currentContent.substring(0, 100) + '...' : 'EMPTY');
-          console.log('🆕 New content:', formattedContent.substring(0, 100) + '...');
+          // Geçersiz karakterleri temizle (dosya adı için uygun hale getir)
+          tabTitle = tabTitle
+            .replace(/[<>:"/\\|?*]/g, '') // Dosya adında geçersiz karakterler
+            .replace(/\s+/g, ' ') // Çoklu boşlukları tek boşluğa çevir
+            .trim();
           
-          if (!currentContent || currentContent.trim() === '') {
+          // Create new tab if no active tab or current tab is empty
+          if (!activeTabId || !currentDocument.content || currentDocument.content.trim() === '') {
+            const timestamp = Date.now();
+            const newTab = {
+              id: `ai-doc-${timestamp}`,
+              type: 'document',
+              title: tabTitle,
+              data: {
+                content: formattedContent,
+                hasChanges: true,
+                aiChanges: [],
+                isNewUDF: true,
+                fileName: `${tabTitle}.udf`
+              }
+            };
+            
+            // Add new tab and set as active
+            setOpenTabs(prev => [...prev, newTab]);
+            setActiveTabId(newTab.id);
+            
+            // Update current document
+            setCurrentDocument({
+              id: newTab.id,
+              name: newTab.title,
+              title: newTab.title,
+              content: formattedContent,
+              hasChanges: true,
+              aiChanges: [],
+              isNewUDF: true,
+              fileName: newTab.data.fileName
+            });
+            
+            // Create UDF file in workspace
+            if (currentWorkspace) {
+              const actualFileName = await createNewUDFFile(newTab.data.fileName, newTab.title, formattedContent);
+              
+              // Eğer dosya adı değiştiyse (duplicate durumu) tab ve currentDocument'i güncelle
+              if (actualFileName !== newTab.data.fileName) {
+                setOpenTabs(prev => prev.map(tab => 
+                  tab.id === newTab.id 
+                    ? { ...tab, data: { ...tab.data, fileName: actualFileName } }
+                    : tab
+                ));
+                
+                setCurrentDocument(prev => ({
+                  ...prev,
+                  fileName: actualFileName
+                }));
+              }
+            }
+          } else {
+            // Update existing tab
+            const currentContent = currentDocument.content;
+            
+            console.log('🔍 Current content:', currentContent ? currentContent.substring(0, 100) + '...' : 'EMPTY');
+            console.log('🆕 New content:', formattedContent.substring(0, 100) + '...');
             // İlk kez metin yazılıyor - pending state
             console.log('✨ Setting AI state to PENDING');
             setAiTextState('pending');
@@ -1440,7 +1909,10 @@ function App() {
             setCurrentDocument(prev => ({
               ...prev,
               content: pendingMarkedContent, // Content with diff markers
-              hasChanges: true
+              hasChanges: true,
+              // UDF bilgilerini koru
+              isNewUDF: prev.isNewUDF || activeTab?.data?.isNewUDF,
+              fileName: prev.fileName || activeTab?.data?.fileName
             }));
             
             // Update the active tab with diff markers
@@ -1449,86 +1921,10 @@ function App() {
                 ? { ...tab, data: { ...tab.data, content: pendingMarkedContent, hasChanges: true } }
                 : tab
             ));
-            
-          } else {
-            // Mevcut metin değiştiriliyor - changes state
-            console.log('🔄 Setting AI state to CHANGES');
-            setAiTextState('changes');
-            setOriginalText(currentContent);
-            
-            // AI yanıtının kısmi güncelleme mi tam dilekçe mi olduğunu kontrol et
-            const isPartialUpdate = textFormattingService.isPartialUpdate(currentContent, formattedContent);
-            console.log('🔍 Is partial update:', isPartialUpdate);
-            
-            if (isPartialUpdate) {
-              // Kısmi güncelleme: AI'nin döndürdüğü paragrafı mevcut dilekçeye merge et
-              console.log('📝 Processing partial update');
-              const mergedContent = textFormattingService.mergePartialUpdate(currentContent, formattedContent);
-              
-              // Diff sistemini kullanarak değişiklikleri hesapla
-              const changeId = textFormattingService.addPendingChange(
-                currentContent, 
-                mergedContent, 
-                'partial'
-              );
-              
-              const pendingChange = textFormattingService.getPendingChange(changeId);
-              if (pendingChange) {
-                console.log('📊 Partial update changes:', pendingChange.changes);
-                setPendingChanges(pendingChange.changes);
-                
-                // Document'ı diff highlight'larıyla güncelle
-                const diffResult = textFormattingService.getPendingTextWithHighlights(currentContent, mergedContent);
-                console.log('🔄 Merged diff highlighted content:', diffResult.highlightedText.substring(0, 100) + '...');
-                
-                setCurrentDocument(prev => ({
-                  ...prev,
-                  content: diffResult.highlightedText, // Content with diff markers
-                  hasChanges: true
-                }));
-                
-                // Update the active tab
-                setOpenTabs(prev => prev.map(tab => 
-                  tab.id === activeTabId 
-                    ? { ...tab, data: { ...tab.data, content: diffResult.highlightedText, hasChanges: true } }
-                    : tab
-                ));
-              }
-            } else {
-              // Tam güncelleme: Mevcut sistem
-              const changeId = textFormattingService.addPendingChange(
-                currentContent, 
-                formattedContent, 
-                'replace'
-              );
-              
-              const pendingChange = textFormattingService.getPendingChange(changeId);
-              if (pendingChange) {
-                console.log('📊 Full replacement changes:', pendingChange.changes);
-                setPendingChanges(pendingChange.changes);
-                
-                // Document'ı diff highlight'larıyla güncelle
-                const diffResult = textFormattingService.getPendingTextWithHighlights(currentContent, formattedContent);
-                console.log('🔄 Full diff highlighted content:', diffResult.highlightedText.substring(0, 100) + '...');
-                
-                setCurrentDocument(prev => ({
-                  ...prev,
-                  content: diffResult.highlightedText, // Content with diff markers
-                  hasChanges: true
-                }));
-                
-                // Update the active tab
-                setOpenTabs(prev => prev.map(tab => 
-                  tab.id === activeTabId 
-                    ? { ...tab, data: { ...tab.data, content: diffResult.highlightedText, hasChanges: true } }
-                    : tab
-                ));
-              }
-            }
           }
-          
-          // Clear old pending content
-          setPendingContent('');
+        } else {
+          // No document content - regular AI response
+          console.log('💬 No document content found, regular AI response');
         }
         
         console.log('🏁 AI Response Complete - DEBUG END');
@@ -2487,11 +2883,15 @@ function App() {
         finalContent = contentToAdd;
       }
       
+      const activeTab = openTabs.find(tab => tab.id === activeTabId);
       const newDocumentState = {
         ...currentDocument,
         content: finalContent,
         hasChanges: true,
-        aiChanges: [] // Clear previous AI changes since content is accepted
+        aiChanges: [], // Clear previous AI changes since content is accepted
+        // UDF bilgilerini koru
+        isNewUDF: currentDocument.isNewUDF || activeTab?.data?.isNewUDF,
+        fileName: currentDocument.fileName || activeTab?.data?.fileName
       };
       
       // Update both currentDocument and the active tab
@@ -2622,9 +3022,6 @@ function App() {
     <div className="h-screen bg-background text-foreground flex flex-col">
       {/* Header Bar */}
       <HeaderBar 
-        currentDocument={currentDocument}
-        onExport={handleExport}
-        onNewDocument={handleNewDocument}
         onOpenSettings={handleOpenSettings}
         darkMode={darkMode}
         onToggleTheme={toggleTheme}
